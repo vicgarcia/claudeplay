@@ -1,0 +1,32 @@
+[project]
+name = "claudeplay"
+version = "0.1.0"
+description = "system-tray gateway exposing local stdio MCP servers as one claude.ai connector"
+authors = [
+    { name = "vic Garcia", email = "vic.garcia@outlook.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "fastmcp>=4.1.4,<4.2",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=7.0.0",
+]
+
+[project.scripts]
+claudeplay = "claudeplay:run"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/claudeplay"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = ["-v"]
