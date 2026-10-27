@@ -149,6 +149,7 @@ def build(
     overrides: dict[str, bool] | None = None,
     board: StatusBoard | None = None,
     auth: Any = None,
+    extra_middleware: tuple[Middleware, ...] = (),
     environ: dict[str, str] | None = None,
 ) -> tuple[FastMCP, StatusBoard]:
     ''' build the gateway; a server that cannot be set up is marked failed and the rest still serve '''
@@ -166,7 +167,7 @@ def build(
                 t.cancel()
             board.stop()
 
-    gw = FastMCP('claudeplay', auth=auth, lifespan=lifespan, middleware=[ToolLogMiddleware()])
+    gw = FastMCP('claudeplay', auth=auth, lifespan=lifespan, middleware=[*extra_middleware, ToolLogMiddleware()])
 
     for server in cfg.servers:
         if not config.is_enabled(server, overrides):
@@ -185,10 +186,10 @@ def build(
     return gw, board
 
 
-def serve(cfg: config.GatewayConfig, auth: Any = None) -> None:
+def serve(cfg: config.GatewayConfig, auth: Any = None, extra_middleware: tuple[Middleware, ...] = ()) -> None:
     ''' run the gateway on the configured host and port until the process is stopped '''
     board = StatusBoard(config.status_path(), cfg.endpoint_url)
-    gw, board = build(cfg, board=board, auth=auth)
+    gw, board = build(cfg, board=board, auth=auth, extra_middleware=extra_middleware)
     log.info('gateway starting on %s:%d', cfg.host, cfg.port)
     try:
         gw.run(

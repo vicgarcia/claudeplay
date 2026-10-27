@@ -1,6 +1,8 @@
 '''command line: claudeplay serve | check'''
 
 import argparse
+import logging
+import secrets
 import sys
 from pathlib import Path
 
@@ -15,7 +17,15 @@ def cmd_serve(args: argparse.Namespace) -> int:
     from . import gateway
     logs.setup(console=args.console)
     cfg = _load(args.config)
-    gateway.serve(cfg)
+    if cfg.auth is not None:
+        from . import auth
+        provider, allow_list = auth.build(cfg.auth, cfg.base_url)
+        gateway.serve(cfg, auth=provider, extra_middleware=(allow_list,))
+    elif args.insecure_no_auth:
+        logging.getLogger('claudeplay').warning('serving WITHOUT authentication (--insecure-no-auth)')
+        gateway.serve(cfg)
+    else:
+        raise config.ConfigError('no [auth] section in the config; add one, or pass --insecure-no-auth for local development')
     return 0
 
 
@@ -36,6 +46,12 @@ def cmd_check(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_genkey(_args: argparse.Namespace) -> int:
+    ''' print a random value suitable for CLAUDEPLAY_JWT_KEY '''
+    print(secrets.token_urlsafe(48))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog='claudeplay', description='local mcp servers as one claude.ai connector')
     parser.add_argument('--config', help='path to gateway.toml (default: CLAUDEPLAY_CONFIG or the data dir)')
@@ -43,10 +59,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     serve = sub.add_parser('serve', help='run the gateway in the foreground')
     serve.add_argument('--console', action='store_true', help='also log to the console')
+    serve.add_argument('--insecure-no-auth', action='store_true', help='development only: serve without authentication')
     serve.set_defaults(func=cmd_serve)
 
     check = sub.add_parser('check', help='validate the config')
     check.set_defaults(func=cmd_check)
+    genkey = sub.add_parser('genkey', help='print a random signing key')
+    genkey.set_defaults(func=cmd_genkey)
     return parser
 
 
