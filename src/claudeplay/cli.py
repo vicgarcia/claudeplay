@@ -1,4 +1,4 @@
-'''command line: claudeplay serve | check'''
+'''command line: claudeplay serve | tray | install | uninstall | status | check | genkey'''
 
 import argparse
 import logging
@@ -46,6 +46,44 @@ def cmd_check(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_tray(args: argparse.Namespace) -> int:
+    from . import tray
+    extra = ['--insecure-no-auth'] if args.insecure_no_auth else []
+    return tray.run(Path(args.config) if args.config else None, extra, autostart_gateway=not args.no_start)
+
+
+def cmd_install(_args: argparse.Namespace) -> int:
+    from . import autostart
+    try:
+        link = autostart.install()
+    except (FileNotFoundError, RuntimeError) as e:
+        print(f'error: {e}', file=sys.stderr)
+        return 1
+    print(f'installed: {link}')
+    return 0
+
+
+def cmd_uninstall(_args: argparse.Namespace) -> int:
+    from . import autostart
+    print('removed' if autostart.uninstall() else 'not installed')
+    return 0
+
+
+def cmd_status(_args: argparse.Namespace) -> int:
+    ''' print the gateway's last status report '''
+    from . import gateway, winutil
+    data = gateway.read_status()
+    if data is None:
+        print('no status (gateway has not run)')
+        return 1
+    state = data['state'] if winutil.pid_alive(data['pid']) else 'stopped (stale report)'
+    print(f"{state}  pid {data['pid']}  {data['url']}")
+    for name, info in data['servers'].items():
+        detail = info['error'] or (f"{info['tools']} tools" if info['tools'] is not None else '')
+        print(f"  {name}: {info['state']}{'  ' + detail if detail else ''}")
+    return 0
+
+
 def cmd_genkey(_args: argparse.Namespace) -> int:
     ''' print a random value suitable for CLAUDEPLAY_JWT_KEY '''
     print(secrets.token_urlsafe(48))
@@ -61,6 +99,15 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument('--console', action='store_true', help='also log to the console')
     serve.add_argument('--insecure-no-auth', action='store_true', help='development only: serve without authentication')
     serve.set_defaults(func=cmd_serve)
+
+    tray = sub.add_parser('tray', help='run the system-tray app (starts the gateway)')
+    tray.add_argument('--no-start', action='store_true', help='do not start the gateway on launch')
+    tray.add_argument('--insecure-no-auth', action='store_true', help='development only: gateway without authentication')
+    tray.set_defaults(func=cmd_tray)
+
+    sub.add_parser('install', help='start the tray at logon').set_defaults(func=cmd_install)
+    sub.add_parser('uninstall', help='stop starting the tray at logon').set_defaults(func=cmd_uninstall)
+    sub.add_parser('status', help='show the gateway status').set_defaults(func=cmd_status)
 
     check = sub.add_parser('check', help='validate the config')
     check.set_defaults(func=cmd_check)

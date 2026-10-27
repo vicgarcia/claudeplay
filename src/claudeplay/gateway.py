@@ -68,6 +68,8 @@ class StatusBoard:
     def snapshot(self) -> dict[str, Any]:
         return {
             'pid': os.getpid(),
+            # set by the supervisor so it can tell this run from a stale file (a venv launcher's pid differs)
+            'run_id': os.environ.get('CLAUDEPLAY_RUN_ID', ''),
             'state': self.overall(),
             'url': self.url,
             'updated': time.time(),

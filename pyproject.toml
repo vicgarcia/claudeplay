@@ -20,6 +20,9 @@ test = [
 [project.scripts]
 claudeplay = "claudeplay:run"
 
+[project.gui-scripts]
+claudeplay-tray = "claudeplay:run_tray"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
