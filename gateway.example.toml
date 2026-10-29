@@ -33,3 +33,12 @@ enabled = false
 TODO_CLIENT_ID = '${TODO_CLIENT_ID}'
 TODO_CLIENT_SECRET = '${TODO_CLIENT_SECRET}'
 TODO_REFRESH_TOKEN = '${TODO_REFRESH_TOKEN}'
+
+[servers.pinboard]
+command = '${USERPROFILE}/.local/bin/pinboard-mcp.exe'
+# pinboard-mcp validates its token at startup and exits if it is wrong, so this stays off until
+# PINBOARD_TOKEN is set (format username:TOKEN)
+enabled = false
+
+[servers.pinboard.env]
+PINBOARD_TOKEN = '${PINBOARD_TOKEN}'
