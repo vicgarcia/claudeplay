@@ -17,7 +17,7 @@ def cfg_of(*servers: config.ServerConfig) -> config.GatewayConfig:
 async def run_gateway(cfg, overrides=None, environ=None, calls=()):
     ''' build the gateway, wait for probes, return (tool names, board, call results, live overall state) '''
     board = gateway.StatusBoard(config.status_path(), cfg.endpoint_url)
-    gw, board = gateway.build(cfg, overrides=overrides or {}, board=board, environ=environ)
+    gw, board = gateway.build(cfg, overrides=overrides or {}, board=board, environ=environ, raw=True)
     async with Client(gw, mode='legacy') as client:
         names = sorted(t.name for t in await client.list_tools())
         for _ in range(100):

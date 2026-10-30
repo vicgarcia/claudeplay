@@ -20,10 +20,10 @@ def cmd_serve(args: argparse.Namespace) -> int:
     if cfg.auth is not None:
         from . import auth
         provider, allow_list = auth.build(cfg.auth, cfg.base_url)
-        gateway.serve(cfg, auth=provider, extra_middleware=(allow_list,))
+        gateway.serve(cfg, auth=provider, extra_middleware=(allow_list,), raw=args.raw)
     elif args.insecure_no_auth:
         logging.getLogger('claudeplay').warning('serving WITHOUT authentication (--insecure-no-auth)')
-        gateway.serve(cfg)
+        gateway.serve(cfg, raw=args.raw)
     else:
         raise config.ConfigError('no [auth] section in the config; add one, or pass --insecure-no-auth for local development')
     return 0
@@ -98,6 +98,7 @@ def build_parser() -> argparse.ArgumentParser:
     serve = sub.add_parser('serve', help='run the gateway in the foreground')
     serve.add_argument('--console', action='store_true', help='also log to the console')
     serve.add_argument('--insecure-no-auth', action='store_true', help='development only: serve without authentication')
+    serve.add_argument('--raw', action='store_true', help='debugging: expose every backend tool instead of the curated toolkit')
     serve.set_defaults(func=cmd_serve)
 
     tray = sub.add_parser('tray', help='run the system-tray app (starts the gateway)')

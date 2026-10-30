@@ -8,6 +8,7 @@ Windows tray app exposing local stdio MCP servers as one claude.ai connector. Re
 src/claudeplay/
   config.py      gateway.toml parsing, ${ENV_VAR} expansion, data-dir paths, tray overrides
   gateway.py     fastmcp gateway: one create_proxy provider per server, status board, tool-call logging
+  toolkit.py     the presented toolkit: CATALOG of curated tools (public name -> backend tool), instructions
   auth.py        OAuthProxy fronting github, AllowListVerifier, encrypted token store
   supervisor.py  runs the gateway as a child process; state from status.json
   tray.py        pystray menu and icon
@@ -21,11 +22,15 @@ tests/           pytest; tests/fake_server.py is a stdio backend
 ## Commands
 
 ```bash
-~/.local/bin/uv.exe run --extra test pytest     # about 80s: tests spawn real gateways
-~/.local/bin/uv.exe run claudeplay check
+~/.local/bin/uv.exe run --extra test python -m pytest     # about 80s: tests spawn real gateways
+~/.local/bin/uv.exe run python -m claudeplay check
 ```
 
-uv is not on PATH. Commit messages are single-line lowercase with no co-author trailer; pass `-c user.name -c user.email` (no global git config).
+uv is not on PATH. Windows Application Control sometimes blocks the venv's `pytest.exe`/`claudeplay.exe` launchers (os error 4551); `python -m pytest` / `python -m claudeplay` work. Commit messages are single-line lowercase with no co-author trailer; pass `-c user.name -c user.email` (no global git config).
+
+## The toolkit
+
+Claude sees only what `toolkit.CATALOG` lists: domain names (`journal_*`, later `tasks_*`, `bookmarks_*`), our own descriptions and annotations, routed to backend tools mounted as `<server>_<tool>`. Everything else from a backend (tools, prompts, resources) is hidden. To add a tool, add an `Entry`; put real logic in the backend repo, not here. `claudeplay serve --raw` exposes every backend tool for debugging.
 
 ## Gotchas learned the hard way
 

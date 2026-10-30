@@ -85,6 +85,19 @@ Tray icon colour: grey stopped, amber starting, green running, orange degraded (
 
 Logs: `%LOCALAPPDATA%\claudeplay\logs\claudeplay.log` (rotating). Tool calls log the tool name and duration, never arguments or results.
 
+## The toolkit
+
+Claude does not see the backends directly. It sees one server, `claudeplay`, with a curated set of tools defined in [toolkit.py](src/claudeplay/toolkit.py):
+
+| Tool | What it does | Backend |
+|---|---|---|
+| `get_date` | today's date | obsidian |
+| `journal_list_month` | which days in a month have an entry | obsidian |
+| `journal_read` | read one day's entry | obsidian (`read_journal_entry`, needs obsidian-mcp with the journal tools) |
+| `journal_append` | add a note to the end of today's entry | obsidian (`append_to_todays_journal`) |
+
+Every other backend tool is hidden. `claudeplay serve --raw` exposes all of them as `<server>_<tool>` for debugging.
+
 ## Test with MCP Inspector
 
 ```powershell
@@ -92,10 +105,10 @@ claudeplay serve --insecure-no-auth
 npx @modelcontextprotocol/inspector --cli http://127.0.0.1:8765/mcp --transport http --method tools/list
 ```
 
-Tool names are always `<server>_<tool>`, for example `obsidian_list_wiki`.
+With the curated toolkit you see the four tools above; with `--raw`, backend names like `obsidian_list_wiki`.
 
 ## Develop
 
 ```powershell
-uv run --extra test pytest
+uv run --extra test python -m pytest
 ```

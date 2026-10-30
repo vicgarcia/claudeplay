@@ -137,7 +137,7 @@ def test_http_endpoint_enforces_allow_list():
             return sorted(t.name for t in await client.list_tools())
 
     async def go():
-        gw, _ = gateway.build(cfg, overrides={}, auth=verifier, extra_middleware=(
+        gw, _ = gateway.build(cfg, overrides={}, raw=True, auth=verifier, extra_middleware=(
             AuthMiddleware(auth=auth.allow_list_check({ME})),
         ))
         port = free_port()
@@ -165,7 +165,7 @@ def test_real_oauth_endpoints_are_published_and_mcp_requires_auth():
     base = f'http://127.0.0.1:{port}'
     acfg = config.AuthConfig(client_id='id', client_secret='secret', jwt_signing_key=KEY, allowed_user_ids=(ME,))
     provider, allow_list = auth.build(acfg, base, store_dir=config.data_dir() / 'oauth')
-    gw, _ = gateway.build(config.GatewayConfig(servers=(fake('a'),)), overrides={}, auth=provider, extra_middleware=(allow_list,))
+    gw, _ = gateway.build(config.GatewayConfig(servers=(fake('a'),)), overrides={}, raw=True, auth=provider, extra_middleware=(allow_list,))
 
     async def go():
         task = await serve_gateway(gw, port)

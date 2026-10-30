@@ -16,7 +16,7 @@ from fastmcp.client.transports import StdioTransport
 from fastmcp.server import create_proxy
 from fastmcp.server.middleware import Middleware, MiddlewareContext
 
-from . import config
+from . import config, toolkit
 
 log = logging.getLogger('claudeplay.gateway')
 
@@ -153,8 +153,12 @@ def build(
     auth: Any = None,
     extra_middleware: tuple[Middleware, ...] = (),
     environ: dict[str, str] | None = None,
+    raw: bool = False,
 ) -> tuple[FastMCP, StatusBoard]:
-    ''' build the gateway; a server that cannot be set up is marked failed and the rest still serve '''
+    ''' build the gateway; a server that cannot be set up is marked failed and the rest still serve
+
+    by default only the curated toolkit is visible; raw=True exposes every backend tool as <server>_<tool>
+    '''
     overrides = config.load_overrides() if overrides is None else overrides
     board = board or StatusBoard(None, cfg.endpoint_url)
     proxies: dict[str, FastMCP] = {}
@@ -169,7 +173,15 @@ def build(
                 t.cancel()
             board.stop()
 
-    gw = FastMCP('claudeplay', auth=auth, lifespan=lifespan, middleware=[*extra_middleware, ToolLogMiddleware()])
+    gw = FastMCP(
+        toolkit.NAME,
+        instructions=toolkit.INSTRUCTIONS,
+        auth=auth,
+        lifespan=lifespan,
+        middleware=[*extra_middleware, ToolLogMiddleware()],
+    )
+    if not raw:
+        gw.add_transform(toolkit.Catalog())
 
     for server in cfg.servers:
         if not config.is_enabled(server, overrides):
@@ -188,10 +200,10 @@ def build(
     return gw, board
 
 
-def serve(cfg: config.GatewayConfig, auth: Any = None, extra_middleware: tuple[Middleware, ...] = ()) -> None:
+def serve(cfg: config.GatewayConfig, auth: Any = None, extra_middleware: tuple[Middleware, ...] = (), raw: bool = False) -> None:
     ''' run the gateway on the configured host and port until the process is stopped '''
     board = StatusBoard(config.status_path(), cfg.endpoint_url)
-    gw, board = build(cfg, board=board, auth=auth, extra_middleware=extra_middleware)
+    gw, board = build(cfg, board=board, auth=auth, extra_middleware=extra_middleware, raw=raw)
     log.info('gateway starting on %s:%d', cfg.host, cfg.port)
     try:
         gw.run(
