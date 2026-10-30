@@ -1,11 +1,13 @@
-'''configuration for the gateway: gateway.toml parsing, ${ENV_VAR} expansion, paths'''
+'''the claudeplay config file (config.toml): parsing, in-place edits, optional ${ENV_VAR} expansion, paths'''
 
-import json
 import os
 import re
+import secrets
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
+
+import tomlkit
 
 DEFAULT_HOST = '127.0.0.1'
 DEFAULT_PORT = 8765
@@ -18,7 +20,7 @@ class ConfigError(Exception):
 
 
 def data_dir() -> Path:
-    ''' per-user state directory (logs, status, token store, overrides) '''
+    ''' per-user state directory (config, logs, status, token store) '''
     override = os.environ.get('CLAUDEPLAY_HOME')
     if override:
         return Path(override)
@@ -34,18 +36,17 @@ def status_path() -> Path:
     return data_dir() / 'status.json'
 
 
-def overrides_path() -> Path:
-    return data_dir() / 'overrides.json'
-
-
 def default_config_path() -> Path:
-    ''' CLAUDEPLAY_CONFIG wins, otherwise gateway.toml in the data dir '''
+    ''' CLAUDEPLAY_CONFIG wins, otherwise config.toml in the data dir '''
     override = os.environ.get('CLAUDEPLAY_CONFIG')
-    return Path(override) if override else data_dir() / 'gateway.toml'
+    return Path(override) if override else data_dir() / 'config.toml'
 
 
 def expand(value: str, environ: dict[str, str] | None = None) -> str:
-    ''' replace ${VAR} with its value; an unset variable is an error naming only the variable '''
+    ''' replace ${VAR} with its value; an unset variable is an error naming only the variable
+
+    values are normally written directly in config.toml; this is an optional escape hatch
+    '''
     environ = os.environ if environ is None else environ
 
     def sub(match: re.Match) -> str:
@@ -59,7 +60,7 @@ def expand(value: str, environ: dict[str, str] | None = None) -> str:
 
 @dataclass(frozen=True)
 class ServerConfig:
-    ''' one stdio server as written in gateway.toml; values are NOT expanded yet '''
+    ''' one stdio server as written in config.toml; values are NOT expanded yet '''
     name: str
     command: str
     args: tuple[str, ...] = ()
@@ -179,20 +180,64 @@ def load(path: Path | None = None) -> GatewayConfig:
     return parse(text)
 
 
-def load_overrides() -> dict[str, bool]:
-    ''' enable/disable toggles set from the tray; kept out of gateway.toml so it stays hand-edited '''
-    try:
-        data = json.loads(overrides_path().read_text(encoding='utf-8'))
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
-    enabled = data.get('enabled', {}) if isinstance(data, dict) else {}
-    return {k: v for k, v in enabled.items() if isinstance(v, bool)}
+def _edit(path: Path, change) -> None:
+    ''' apply change(document) to the config file, keeping its comments and formatting '''
+    with open(path, encoding='utf-8', newline='') as f:
+        text = f.read()
+    newline = '\r\n' if '\r\n' in text else '\n'
+    doc = tomlkit.parse(text.replace('\r\n', '\n'))
+    change(doc)
+    tmp = path.with_suffix('.tmp')
+    # write the file back with the line endings it had
+    with open(tmp, 'w', encoding='utf-8', newline='') as f:
+        f.write(tomlkit.dumps(doc).replace('\n', newline))
+    os.replace(tmp, path)
 
 
-def save_overrides(enabled: dict[str, bool]) -> None:
-    overrides_path().parent.mkdir(parents=True, exist_ok=True)
-    overrides_path().write_text(json.dumps({'enabled': enabled}, indent=2), encoding='utf-8')
+def set_enabled(path: Path, name: str, enabled: bool) -> None:
+    ''' flip a server's enabled flag in the config file (used by the tray toggles) '''
+    def change(doc):
+        servers = doc.get('servers', {})
+        if name not in servers:
+            raise ConfigError(f'server {name} is not in the config')
+        servers[name]['enabled'] = enabled
+    _edit(path, change)
 
 
-def is_enabled(server: ServerConfig, overrides: dict[str, bool]) -> bool:
-    return overrides.get(server.name, server.enabled)
+def ensure_signing_key(path: Path) -> bool:
+    ''' write a random jwt_signing_key into [auth] if it is missing or empty; returns True if one was written '''
+    written = False
+
+    def change(doc):
+        nonlocal written
+        auth = doc.get('auth')
+        if auth is None or auth.get('jwt_signing_key'):
+            return
+        auth['jwt_signing_key'] = secrets.token_urlsafe(48)
+        written = True
+
+    _edit(path, change)
+    return written
+
+
+MASK = '********'
+
+
+def describe(cfg: GatewayConfig) -> list[str]:
+    ''' the effective config as text, with every secret masked, safe to paste when debugging '''
+    lines = [f'endpoint: {cfg.endpoint_url}', f'listen:   {cfg.host}:{cfg.port}']
+    if cfg.auth is None:
+        lines.append('auth:     none')
+    else:
+        lines.append(f'auth:     github client {cfg.auth.client_id or "(missing)"}, allowed ids {list(cfg.auth.allowed_user_ids)}')
+        lines.append(f'          client secret {MASK if cfg.auth.client_secret else "(missing)"}, '
+                     f'signing key {MASK if cfg.auth.jwt_signing_key else "(missing)"}')
+    for s in cfg.servers:
+        lines.append(f'server {s.name}: {"enabled" if s.enabled else "disabled"}')
+        lines.append(f'  command {s.command}')
+        if s.args:
+            lines.append(f'  args    {list(s.args)}')
+        # env values are where credentials live, so only their names are shown
+        if s.env:
+            lines.append(f'  env     {", ".join(f"{k}={MASK}" for k in s.env)}')
+    return lines

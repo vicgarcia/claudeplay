@@ -9,8 +9,12 @@ from pathlib import Path
 from . import config, logs
 
 
+def _path(path: str | None) -> Path:
+    return Path(path) if path else config.default_config_path()
+
+
 def _load(path: str | None) -> config.GatewayConfig:
-    return config.load(Path(path) if path else None)
+    return config.load(_path(path))
 
 
 def cmd_serve(args: argparse.Namespace) -> int:
@@ -19,6 +23,9 @@ def cmd_serve(args: argparse.Namespace) -> int:
     cfg = _load(args.config)
     if cfg.auth is not None:
         from . import auth
+        if config.ensure_signing_key(_path(args.config)):
+            logging.getLogger('claudeplay').info('generated jwt_signing_key in the config file')
+            cfg = _load(args.config)
         provider, allow_list = auth.build(cfg.auth, cfg.base_url)
         gateway.serve(cfg, auth=provider, extra_middleware=(allow_list,), raw=args.raw)
     elif args.insecure_no_auth:
@@ -30,12 +37,15 @@ def cmd_serve(args: argparse.Namespace) -> int:
 
 
 def cmd_check(args: argparse.Namespace) -> int:
-    ''' validate the config and report what would start, without launching anything '''
-    cfg = _load(args.config)
-    overrides = config.load_overrides()
-    print(f'endpoint: {cfg.endpoint_url}')
+    ''' show the effective config with secrets masked, and what would start, without launching anything '''
+    path = _path(args.config)
+    cfg = config.load(path)
+    print(f'config:   {path}')
+    for line in config.describe(cfg):
+        print(line)
+    print('checks:')
     for server in cfg.servers:
-        if not config.is_enabled(server, overrides):
+        if not server.enabled:
             print(f'  {server.name}: disabled')
             continue
         try:
@@ -92,7 +102,7 @@ def cmd_genkey(_args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog='claudeplay', description='local mcp servers as one claude.ai connector')
-    parser.add_argument('--config', help='path to gateway.toml (default: CLAUDEPLAY_CONFIG or the data dir)')
+    parser.add_argument('--config', help=r'path to config.toml (default: CLAUDEPLAY_CONFIG, else %%LOCALAPPDATA%%\claudeplay\config.toml)')
     sub = parser.add_subparsers(dest='command', required=True)
 
     serve = sub.add_parser('serve', help='run the gateway in the foreground')

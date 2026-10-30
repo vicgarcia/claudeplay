@@ -4,6 +4,7 @@ import ctypes
 import logging
 import os
 import threading
+from pathlib import Path
 
 import pystray
 from PIL import Image, ImageDraw
@@ -48,10 +49,10 @@ def server_label(name: str, servers: dict[str, dict]) -> str:
 
 
 class TrayApp:
-    def __init__(self, sup: Supervisor, cfg: config.GatewayConfig):
+    def __init__(self, sup: Supervisor, cfg: config.GatewayConfig, config_path: Path):
         self.sup = sup
         self.cfg = cfg
-        self.overrides = config.load_overrides()
+        self.config_path = config_path
         self.icon = pystray.Icon('claudeplay', make_icon(supervisor.STOPPED), 'claudeplay: stopped', menu=self.build_menu())
         self._last_state = supervisor.STOPPED
         self._stop = threading.Event()
@@ -63,7 +64,7 @@ class TrayApp:
 
     def server_enabled(self, name: str) -> bool:
         server = self.cfg.server(name)
-        return server is not None and config.is_enabled(server, self.overrides)
+        return server is not None and server.enabled
 
     def server_item(self, name: str) -> pystray.MenuItem:
         # a method (not a loop lambda) so each item closes over its own name
@@ -126,9 +127,17 @@ class TrayApp:
         self.notify('everything stopped')
 
     def toggle_server(self, name: str) -> None:
-        self.overrides[name] = not self.server_enabled(name)
-        config.save_overrides(self.overrides)
-        log.info('server %s %s', name, 'enabled' if self.overrides[name] else 'disabled')
+        enabled = not self.server_enabled(name)
+        try:
+            config.set_enabled(self.config_path, name, enabled)
+            self.cfg = config.load(self.config_path)
+        except (config.ConfigError, OSError) as e:
+            log.warning('could not toggle server %s: %s', name, e)
+            self.notify(f'could not change {name}: {e}')
+            return
+        # the gateway re-reads the file when it starts
+        self.sup.cfg = self.cfg
+        log.info('server %s %s', name, 'enabled' if enabled else 'disabled')
         # servers are mounted when the gateway starts, so a toggle takes effect on restart
         if self.running():
             self.restart()
@@ -186,6 +195,7 @@ def run(config_path=None, extra_args: list[str] | None = None, autostart_gateway
         message_box('claudeplay is already running (look for its icon in the system tray).')
         return 1
     try:
+        config_path = config_path or config.default_config_path()
         cfg = config.load(config_path)
     except config.ConfigError as e:
         message_box(f'cannot start: {e}')
@@ -196,7 +206,7 @@ def run(config_path=None, extra_args: list[str] | None = None, autostart_gateway
         log.warning('could not create kill-on-close job; children may outlive a killed tray')
     sup = Supervisor(cfg, config_path, extra_args)
     try:
-        TrayApp(sup, cfg).run(autostart_gateway)
+        TrayApp(sup, cfg, config_path).run(autostart_gateway)
     finally:
         sup.stop()
         guard.release()

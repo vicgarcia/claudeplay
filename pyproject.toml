@@ -10,6 +10,7 @@ dependencies = [
     "fastmcp>=4.1.4,<4.2",
     "pillow>=13.0.0",
     "pystray>=0.19.5",
+    "tomlkit>=0.15.2",
 ]
 
 [project.optional-dependencies]

@@ -1,12 +1,12 @@
 # claudeplay
 
-Windows tray app exposing local stdio MCP servers as one claude.ai connector. Read [plan.md](plan.md) first: it is the source of truth for decisions, phases and verified API behaviour. Settled decisions (one gateway and endpoint, GitHub OAuth via FastMCP's proxy with a numeric-id allow-list, Cloudflare Tunnel on example.net, runs at logon, uv tool, pystray, own `gateway.toml`, todo-mcp untouched) are not up for re-litigation.
+Windows tray app exposing local stdio MCP servers as one claude.ai connector. Read [plan.md](plan.md) first: it is the source of truth for decisions, phases and verified API behaviour. Settled decisions (one gateway and endpoint, GitHub OAuth via FastMCP's proxy with a numeric-id allow-list, Cloudflare Tunnel on example.net, runs at logon, uv tool, pystray, own `config.toml`, todo-mcp untouched) are not up for re-litigation.
 
 ## Structure
 
 ```
 src/claudeplay/
-  config.py      gateway.toml parsing, ${ENV_VAR} expansion, data-dir paths, tray overrides
+  config.py      config.toml: parsing, in-place edits (tomlkit), masked describe, optional ${ENV_VAR}, paths
   gateway.py     fastmcp gateway: one create_proxy provider per server, status board, tool-call logging
   toolkit.py     the presented toolkit: CATALOG of curated tools (public name -> backend tool), instructions
   auth.py        OAuthProxy fronting github, AllowListVerifier, encrypted token store

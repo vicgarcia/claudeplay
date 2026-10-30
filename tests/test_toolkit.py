@@ -18,7 +18,7 @@ def obsidian() -> config.ServerConfig:
 
 async def session(cfg, steps):
     ''' run steps(client) against the curated gateway '''
-    gw, _ = gateway.build(cfg, overrides={})
+    gw, _ = gateway.build(cfg)
     async with Client(gw, mode='legacy') as client:
         return await steps(client)
 

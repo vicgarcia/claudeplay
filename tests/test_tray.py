@@ -44,9 +44,12 @@ class StubSupervisor:
 
 
 @pytest.fixture
-def app():
-    cfg = config.GatewayConfig(servers=(fake('obsidian'), fake('todo', enabled=False)))
-    return tray.TrayApp(StubSupervisor(), cfg)
+def app(tmp_path):
+    path = tmp_path / 'config.toml'
+    path.write_text("[servers.obsidian]\ncommand = 'o.exe'\n\n[servers.todo]\ncommand = 't.exe'\nenabled = false\n")
+    sup = StubSupervisor()
+    sup.cfg = None
+    return tray.TrayApp(sup, config.load(path), path)
 
 
 def test_icon_color_follows_state():
@@ -88,13 +91,15 @@ def test_toggle_server_persists_and_restarts_only_when_running(app):
     assert app.server_enabled('obsidian') and not app.server_enabled('todo')
     app.toggle_server('todo')
     assert app.server_enabled('todo')
-    assert config.load_overrides() == {'todo': True}
+    assert config.load(app.config_path).server('todo').enabled is True
+    assert app.sup.cfg is app.cfg
     assert app.sup.calls == []
 
     app.sup.start()
     app.toggle_server('obsidian')
     assert not app.server_enabled('obsidian')
-    assert config.load_overrides() == {'todo': True, 'obsidian': False}
+    saved = config.load(app.config_path)
+    assert saved.server('todo').enabled is True and saved.server('obsidian').enabled is False
     assert app.sup.calls == ['start', 'restart']
 
 
@@ -181,3 +186,4 @@ def test_kill_on_close_job_takes_children_down_with_the_parent():
         assert not winutil.pid_alive(child_pid)
     finally:
         parent.kill()
+        parent.stdout.close()

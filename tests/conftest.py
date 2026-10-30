@@ -10,7 +10,7 @@ FAKE_SERVER = str(Path(__file__).parent / 'fake_server.py')
 
 @pytest.fixture(autouse=True)
 def isolated_home(tmp_path, monkeypatch):
-    ''' keep tests away from the real data dir, config and overrides '''
+    ''' keep tests away from the real data dir and config '''
     monkeypatch.setenv('CLAUDEPLAY_HOME', str(tmp_path / 'home'))
     monkeypatch.delenv('CLAUDEPLAY_CONFIG', raising=False)
     return tmp_path / 'home'

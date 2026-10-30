@@ -86,17 +86,75 @@ def test_load_missing_file(tmp_path):
         config.load(tmp_path / 'nope.toml')
 
 
-def test_overrides_round_trip_and_precedence():
-    cfg = config.parse(SAMPLE)
-    assert config.load_overrides() == {}
-    config.save_overrides({'todo': True, 'obsidian': False})
-    overrides = config.load_overrides()
-    assert config.is_enabled(cfg.server('todo'), overrides) is True
-    assert config.is_enabled(cfg.server('obsidian'), overrides) is False
-    assert config.is_enabled(cfg.server('todo'), {}) is False
+EDITABLE = """# my config
+[gateway]
+port = 9000  # keep this comment
+
+[auth]
+client_id = 'abc'
+client_secret = 'top-secret'
+allowed_user_ids = [42]
+
+[servers.todo]
+command = 'todo.exe'
+enabled = false  # off for now
+
+[servers.todo.env]
+TODO_CLIENT_SECRET = 'todo-secret'
+"""
 
 
-def test_overrides_ignore_garbage():
-    config.overrides_path().parent.mkdir(parents=True)
-    config.overrides_path().write_text('{not json')
-    assert config.load_overrides() == {}
+def write(tmp_path, text=EDITABLE):
+    path = tmp_path / 'config.toml'
+    path.write_bytes(text.encode())
+    return path
+
+
+def test_default_path_is_config_toml_in_the_data_dir(isolated_home):
+    assert config.default_config_path() == isolated_home / 'config.toml'
+
+
+def test_set_enabled_flips_only_that_flag_and_keeps_comments(tmp_path):
+    path = write(tmp_path)
+    config.set_enabled(path, 'todo', True)
+    text = path.read_text()
+    assert config.load(path).server('todo').enabled is True
+    assert text == EDITABLE.replace('enabled = false  # off for now', 'enabled = true  # off for now')
+
+
+def test_set_enabled_unknown_server(tmp_path):
+    with pytest.raises(config.ConfigError, match='nope'):
+        config.set_enabled(write(tmp_path), 'nope', True)
+
+
+def test_set_enabled_keeps_crlf_files_crlf(tmp_path):
+    path = write(tmp_path, EDITABLE.replace('\n', '\r\n'))
+    config.set_enabled(path, 'todo', True)
+    raw = path.read_bytes()
+    assert b'\r\n' in raw and b'\n' not in raw.replace(b'\r\n', b'')
+
+
+def test_ensure_signing_key_writes_once(tmp_path):
+    path = write(tmp_path)
+    assert config.ensure_signing_key(path) is True
+    key = config.load(path).auth.jwt_signing_key
+    assert len(key) >= 48
+    assert config.ensure_signing_key(path) is False
+    assert config.load(path).auth.jwt_signing_key == key
+    assert '# keep this comment' in path.read_text()
+
+
+def test_ensure_signing_key_without_auth_section_does_nothing(tmp_path):
+    path = write(tmp_path, '[gateway]\nport = 1\n')
+    assert config.ensure_signing_key(path) is False
+    assert path.read_text() == '[gateway]\nport = 1\n'
+
+
+def test_describe_masks_every_secret(tmp_path):
+    path = write(tmp_path)
+    config.ensure_signing_key(path)
+    cfg = config.load(path)
+    text = '\n'.join(config.describe(cfg))
+    for secret in ('top-secret', 'todo-secret', cfg.auth.jwt_signing_key):
+        assert secret not in text
+    assert 'abc' in text and '[42]' in text and 'TODO_CLIENT_SECRET=' in text and 'todo: disabled' in text

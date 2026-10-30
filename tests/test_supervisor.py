@@ -17,7 +17,7 @@ def free_port() -> int:
 
 
 def write_config(tmp_path, port: int):
-    path = tmp_path / 'gateway.toml'
+    path = tmp_path / 'config.toml'
     path.write_text(
         f"[gateway]\nport = {port}\n\n"
         f"[servers.a]\ncommand = '{sys.executable}'\nargs = ['{FAKE_SERVER}']\n\n"

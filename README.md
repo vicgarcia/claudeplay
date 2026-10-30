@@ -16,7 +16,9 @@ This puts `claudeplay` and the windowless `claudeplay-tray` on the uv tools path
 
 ## Configure
 
-1. Copy [gateway.example.toml](gateway.example.toml) to `%LOCALAPPDATA%\claudeplay\gateway.toml` (or point `CLAUDEPLAY_CONFIG` at another file) and edit the server entries. The file is gitignored; it holds no secrets, only `${ENV_VAR}` references.
+Everything lives in one file: `%LOCALAPPDATA%\claudeplay\config.toml` (`C:\Users\<you>\AppData\Local\claudeplay\config.toml`). It holds secrets once filled in, so it stays outside the repo; never commit or paste it. `--config <path>` or `CLAUDEPLAY_CONFIG` points at a different file.
+
+1. Copy [config.example.toml](config.example.toml) there and set the server paths.
 2. Create a GitHub OAuth App (GitHub > Settings > Developer settings > OAuth Apps > New OAuth App):
 
    | Field | Value |
@@ -28,44 +30,29 @@ This puts `claudeplay` and the windowless `claudeplay-tray` on the uv tools path
 
    Then generate a client secret. A GitHub OAuth App holds exactly one callback URL, so when the public hostname exists you edit this field to `https://<host>/auth/callback`.
 3. Find your numeric user id: open `https://api.github.com/users/<your-login>` and copy `id`. The allow-list matches this number, not the login name.
-4. Set the environment variables below, and `allowed_user_ids = [<your id>]` in `gateway.toml`.
-5. `claudeplay check` validates the file and reports which servers would start.
+4. Fill in the values below in `config.toml`.
+5. `claudeplay check` prints the effective config with every secret masked, and which servers would start.
 
-## Environment variables
-
-Secrets never go in `gateway.toml`; it only holds `${NAME}` references. Set them as Windows **user** environment variables, then restart the tray (or sign out and in), because only new processes see them:
-
-```powershell
-setx CLAUDEPLAY_GITHUB_CLIENT_ID     "<client id>"
-setx CLAUDEPLAY_GITHUB_CLIENT_SECRET "<client secret>"
-setx CLAUDEPLAY_JWT_KEY              "$(claudeplay genkey)"
-setx PINBOARD_TOKEN                  "<username:TOKEN>"
-setx TODO_CLIENT_ID                  "<azure app client id>"
-setx TODO_CLIENT_SECRET              "<azure app client secret>"
-setx TODO_REFRESH_TOKEN              "<refresh token from todo-mcp --auth>"
-```
-
-| Variable | Needed for | Notes |
+| Setting | Needed for | Notes |
 |---|---|---|
-| `CLAUDEPLAY_GITHUB_CLIENT_ID` | GitHub login | from the OAuth App |
-| `CLAUDEPLAY_GITHUB_CLIENT_SECRET` | GitHub login | from the OAuth App |
-| `CLAUDEPLAY_JWT_KEY` | signing tokens, encrypting the token store | 32+ characters; changing it logs out every client |
-| `PINBOARD_TOKEN` | pinboard server | Pinboard settings > Password > API token, format `username:TOKEN` |
-| `TODO_CLIENT_ID` | todo server | Azure app (client) id |
-| `TODO_CLIENT_SECRET` | todo server | Azure client secret |
-| `TODO_REFRESH_TOKEN` | todo server | from `todo-mcp --auth --client-id ... --client-secret ...` |
+| `[auth] client_id`, `client_secret` | GitHub login | from the OAuth App |
+| `[auth] allowed_user_ids` | GitHub login | your numeric id, e.g. `[123456]` |
+| `[auth] jwt_signing_key` | signing tokens, encrypting the token store | generated and written into the file on first run; changing it logs out every client |
+| `[servers.pinboard.env] PINBOARD_TOKEN` | pinboard | Pinboard settings > Password > API token, format `username:TOKEN` |
+| `[servers.todo.env] TODO_CLIENT_ID`, `TODO_CLIENT_SECRET` | todo | Azure app id and client secret |
+| `[servers.todo.env] TODO_REFRESH_TOKEN` | todo | from `todo-mcp --auth --client-id ... --client-secret ...` |
 
-Optional, for development and diagnostics:
+todo-mcp and pinboard-mcp read their credentials from their environment, so the gateway passes the server's `env` table to just that process and nothing secret appears on a command line. todo and pinboard ship `enabled = false`: fill in their values, then enable them from the tray's Servers menu (which edits the `enabled` line in `config.toml`, keeping your comments). pinboard-mcp checks its token against Pinboard at startup and exits if it is wrong.
+
+Any value may instead be written as `${NAME}`, which is replaced in memory with the environment variable `NAME` when used. Nothing needs it today; it is there for later.
+
+Environment variables for development only:
 
 | Variable | Purpose |
 |---|---|
-| `CLAUDEPLAY_CONFIG` | path to `gateway.toml` instead of `%LOCALAPPDATA%\claudeplay\gateway.toml` |
-| `CLAUDEPLAY_HOME` | data directory (logs, status, token store, overrides) instead of `%LOCALAPPDATA%\claudeplay` |
+| `CLAUDEPLAY_CONFIG` | config file to use instead of `%LOCALAPPDATA%\claudeplay\config.toml` |
+| `CLAUDEPLAY_HOME` | data directory (config, logs, status, token store) instead of `%LOCALAPPDATA%\claudeplay` |
 | `CLAUDEPLAY_STARTUP_DIR` | where `install` puts the shortcut (tests use this) |
-
-Servers need only the variables they reference. An unset variable fails just that server (the tray shows it, naming the variable but never a value). Obsidian needs none; `TZ` is set in its `env` table. todo and pinboard ship `enabled = false`: set their variables, then enable them from the tray's Servers menu. pinboard-mcp checks its token against Pinboard at startup and exits if it is wrong.
-
-todo-mcp and pinboard-mcp read their credentials from their own environment, so the gateway passes them through each server's `env` table and nothing secret appears on a command line.
 
 ## Run
 
@@ -74,6 +61,7 @@ todo-mcp and pinboard-mcp read their credentials from their own environment, so 
 | `claudeplay tray` | the tray app; starts the gateway |
 | `claudeplay serve` | the gateway in the foreground (`--console` to also log to the terminal) |
 | `claudeplay status` | the last status report: state and per-server health |
+| `claudeplay check` | the effective config with secrets masked, and what would start |
 | `claudeplay install` / `uninstall` | add or remove a Startup-folder shortcut so the tray starts at logon |
 | `claudeplay genkey` | print a random signing key |
 

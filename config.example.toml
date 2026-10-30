@@ -1,0 +1,47 @@
+# claudeplay config: copy to %LOCALAPPDATA%\claudeplay\config.toml and fill in.
+# this file holds secrets once filled in; it lives outside the repo and is never committed.
+# `claudeplay check` prints it with every secret masked, for debugging.
+#
+# values are written directly. ${NAME} is also accepted anywhere and is replaced (in memory only)
+# with the environment variable NAME when the value is used.
+
+[gateway]
+host = '127.0.0.1'
+port = 8765
+# public https url once the tunnel exists; leave as localhost for local use
+public_base_url = 'http://localhost:8765'
+
+[auth]
+# github oauth app (Settings > Developer settings > OAuth Apps)
+client_id = ''
+client_secret = ''
+# numeric github user id(s) allowed in: https://api.github.com/users/<login> -> "id"
+allowed_user_ids = [0]
+# jwt_signing_key is generated and written here on first run; changing it logs out every client
+
+[servers.obsidian]
+command = 'C:/Users/<you>/.local/bin/obsidian-mcp.exe'
+args = ['--vault', 'C:/path/to/vault']
+enabled = true
+
+[servers.obsidian.env]
+TZ = 'America/New_York'
+
+[servers.todo]
+command = 'C:/Users/<you>/.local/bin/todo-mcp.exe'
+enabled = false
+
+[servers.todo.env]
+# azure app id and secret; refresh token from `todo-mcp --auth --client-id ... --client-secret ...`
+TODO_CLIENT_ID = ''
+TODO_CLIENT_SECRET = ''
+TODO_REFRESH_TOKEN = ''
+
+[servers.pinboard]
+command = 'C:/Users/<you>/.local/bin/pinboard-mcp.exe'
+# pinboard-mcp checks its token at startup and exits if it is wrong
+enabled = false
+
+[servers.pinboard.env]
+# pinboard.in settings > password > api token, format username:TOKEN
+PINBOARD_TOKEN = ''

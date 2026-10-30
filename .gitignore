@@ -6,4 +6,4 @@ dist/
 .venv
 .pytest*
 .claude
-gateway.toml
+config.toml

@@ -14,10 +14,10 @@ def cfg_of(*servers: config.ServerConfig) -> config.GatewayConfig:
     return config.GatewayConfig(servers=tuple(servers))
 
 
-async def run_gateway(cfg, overrides=None, environ=None, calls=()):
+async def run_gateway(cfg, environ=None, calls=()):
     ''' build the gateway, wait for probes, return (tool names, board, call results, live overall state) '''
     board = gateway.StatusBoard(config.status_path(), cfg.endpoint_url)
-    gw, board = gateway.build(cfg, overrides=overrides or {}, board=board, environ=environ, raw=True)
+    gw, board = gateway.build(cfg, board=board, environ=environ, raw=True)
     async with Client(gw, mode='legacy') as client:
         names = sorted(t.name for t in await client.list_tools())
         for _ in range(100):
@@ -55,8 +55,8 @@ def test_disabled_servers_are_skipped_and_not_expanded():
 
 
 def test_override_enables_and_disables():
-    cfg = cfg_of(fake('a'), fake('b', enabled=False))
-    names, board, _, overall = run(cfg, overrides={'a': False, 'b': True})
+    cfg = cfg_of(fake('a', enabled=False), fake('b'))
+    names, board, _, overall = run(cfg)
     assert names == ['b_echo', 'b_ping']
     assert board.servers['a'].state == gateway.DISABLED
 

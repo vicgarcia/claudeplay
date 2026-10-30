@@ -148,7 +148,6 @@ async def _probe(name: str, proxy: FastMCP, board: StatusBoard) -> None:
 
 def build(
     cfg: config.GatewayConfig,
-    overrides: dict[str, bool] | None = None,
     board: StatusBoard | None = None,
     auth: Any = None,
     extra_middleware: tuple[Middleware, ...] = (),
@@ -159,7 +158,6 @@ def build(
 
     by default only the curated toolkit is visible; raw=True exposes every backend tool as <server>_<tool>
     '''
-    overrides = config.load_overrides() if overrides is None else overrides
     board = board or StatusBoard(None, cfg.endpoint_url)
     proxies: dict[str, FastMCP] = {}
 
@@ -184,7 +182,7 @@ def build(
         gw.add_transform(toolkit.Catalog())
 
     for server in cfg.servers:
-        if not config.is_enabled(server, overrides):
+        if not server.enabled:
             board.set(server.name, DISABLED)
             continue
         try:

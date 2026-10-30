@@ -9,7 +9,7 @@ command = 'x'
 
 
 def test_serve_refuses_without_auth_section(tmp_path, capsys):
-    path = tmp_path / 'gateway.toml'
+    path = tmp_path / 'config.toml'
     path.write_text(NO_AUTH)
     with pytest.raises(SystemExit) as e:
         cli.main(['--config', str(path), 'serve'])
@@ -18,7 +18,7 @@ def test_serve_refuses_without_auth_section(tmp_path, capsys):
 
 
 def test_check_reports_servers(tmp_path, capsys):
-    path = tmp_path / 'gateway.toml'
+    path = tmp_path / 'config.toml'
     path.write_text(NO_AUTH + "\n[servers.b]\ncommand = 'y'\nenabled = false\n")
     with pytest.raises(SystemExit) as e:
         cli.main(['--config', str(path), 'check'])
