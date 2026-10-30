@@ -67,7 +67,9 @@ Environment variables for development only:
 
 The servers are separate uv tools: `uv tool install` obsidian-mcp, todo-mcp and pinboard-mcp so their `.exe` files exist in `~/.local/bin`.
 
-`serve` and `tray` refuse to run without an `[auth]` section. `--insecure-no-auth` overrides that for local development only.
+`serve` and `tray` refuse to run without an `[auth]` section, unless `insecure_no_auth = true` is set under `[gateway]` (or `--insecure-no-auth` is passed). That is for local use only: it is refused unless the gateway listens on 127.0.0.1, and it must be removed before any tunnel exists.
+
+The logon shortcut runs `pythonw.exe -m claudeplay tray` from the tool's environment rather than the `claudeplay-tray.exe` stub: Smart App Control blocks the per-install stubs uv generates, but allows the standard interpreter.
 
 Tray icon colour: grey stopped, amber starting, green running, orange degraded (a server failed), red crashed. The menu has start/stop/restart, per-server toggles (a toggle restarts the gateway), copy connector URL, open logs folder, a kill switch and quit. Quitting, or killing the tray process, stops the gateway and its servers.
 

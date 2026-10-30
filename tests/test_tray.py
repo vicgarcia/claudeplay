@@ -141,12 +141,15 @@ def test_port_owner_names_this_process():
 
 def test_autostart_install_and_uninstall(tmp_path, monkeypatch):
     monkeypatch.setenv('CLAUDEPLAY_STARTUP_DIR', str(tmp_path / 'startup'))
-    target = tmp_path / 'bin' / 'claudeplay-tray.exe'
+    target = tmp_path / 'bin' / 'pythonw.exe'
     target.parent.mkdir()
     target.write_bytes(b'')
     assert not autostart.is_installed()
     link = autostart.install(target)
     assert link.exists() and autostart.is_installed()
+    shortcut = winutil.run_hidden(['powershell', '-NoProfile', '-Command',
+        f"$s = (New-Object -ComObject WScript.Shell).CreateShortcut('{link}'); $s.TargetPath + '|' + $s.Arguments"]).stdout.strip()
+    assert shortcut == f'{target}|-m claudeplay tray'
     assert autostart.uninstall() is True
     assert not autostart.is_installed()
     assert autostart.uninstall() is False

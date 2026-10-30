@@ -7,7 +7,9 @@ from pathlib import Path
 from . import winutil
 
 SHORTCUT_NAME = 'claudeplay.lnk'
-TRAY_EXE = 'claudeplay-tray.exe'
+# Smart App Control blocks the per-install launcher stubs uv generates (claudeplay-tray.exe), because
+# each has a unique hash with no reputation; the standard pythonw.exe is allowed, so run the module with it
+TRAY_ARGS = '-m claudeplay tray'
 
 
 def startup_dir() -> Path:
@@ -22,8 +24,8 @@ def shortcut_path() -> Path:
 
 
 def tray_executable() -> Path:
-    ''' the windowless tray launcher next to this interpreter, as a full path '''
-    return Path(sys.executable).with_name(TRAY_EXE)
+    ''' the windowless interpreter next to this one, as a full path '''
+    return Path(sys.executable).with_name('pythonw.exe')
 
 
 def is_installed() -> bool:
@@ -40,8 +42,8 @@ def install(target: Path | None = None) -> Path:
     esc = lambda p: str(p).replace("'", "''")
     script = (
         "$s = (New-Object -ComObject WScript.Shell).CreateShortcut('%s'); "
-        "$s.TargetPath = '%s'; $s.WorkingDirectory = '%s'; $s.Description = 'claudeplay tray'; $s.Save()"
-    ) % (esc(link), esc(target), esc(target.parent))
+        "$s.TargetPath = '%s'; $s.Arguments = '%s'; $s.WorkingDirectory = '%s'; $s.Description = 'claudeplay tray'; $s.Save()"
+    ) % (esc(link), esc(target), esc(TRAY_ARGS), esc(target.parent))
     result = winutil.run_hidden(['powershell', '-NoProfile', '-NonInteractive', '-Command', script])
     if result.returncode != 0 or not link.exists():
         raise RuntimeError(f'could not create startup shortcut: {result.stderr.strip()}')

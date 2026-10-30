@@ -42,6 +42,7 @@ Claude sees only what `toolkit.CATALOG` lists: domain names (`journal_*`, later 
 - `uvicorn.access` is disabled because it would log OAuth callback query strings.
 - Never log arguments, results, tokens or expanded env values. Error messages name the variable, not its value.
 - pystray inspects callback arity: no default-arg lambdas in menu items.
+- **Smart App Control** (Code Integrity policy `0283ac0f-...`) blocks uv's generated launcher stubs (`claudeplay-tray.exe`, sometimes `claudeplay.exe`/`pytest.exe`): unique hashes, no reputation. The standard `python.exe`/`pythonw.exe` are allowed, so autostart runs `pythonw.exe -m claudeplay tray`. Check `Microsoft-Windows-CodeIntegrity/Operational` events when an exe silently fails to start.
 
 ## Conventions
 

@@ -10,6 +10,9 @@ host = '127.0.0.1'
 port = 8765
 # public https url once the tunnel exists; leave as localhost for local use
 public_base_url = 'http://localhost:8765'
+# local use without login while [auth] is not filled in; refused unless host is 127.0.0.1.
+# never set this once a tunnel exists.
+# insecure_no_auth = true
 
 [auth]
 # github oauth app (Settings > Developer settings > OAuth Apps)

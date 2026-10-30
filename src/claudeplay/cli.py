@@ -9,6 +9,9 @@ from pathlib import Path
 from . import config, logs
 
 
+LOOPBACK = {'127.0.0.1', 'localhost', '::1'}
+
+
 def _path(path: str | None) -> Path:
     return Path(path) if path else config.default_config_path()
 
@@ -28,11 +31,13 @@ def cmd_serve(args: argparse.Namespace) -> int:
             cfg = _load(args.config)
         provider, allow_list = auth.build(cfg.auth, cfg.base_url)
         gateway.serve(cfg, auth=provider, extra_middleware=(allow_list,), raw=args.raw)
-    elif args.insecure_no_auth:
-        logging.getLogger('claudeplay').warning('serving WITHOUT authentication (--insecure-no-auth)')
+    elif args.insecure_no_auth or cfg.insecure_no_auth:
+        if cfg.host not in LOOPBACK:
+            raise config.ConfigError(f'refusing to serve without authentication on {cfg.host}; use 127.0.0.1')
+        logging.getLogger('claudeplay').warning('serving WITHOUT authentication (local use only)')
         gateway.serve(cfg, raw=args.raw)
     else:
-        raise config.ConfigError('no [auth] section in the config; add one, or pass --insecure-no-auth for local development')
+        raise config.ConfigError('no [auth] section in the config; add one, or set insecure_no_auth = true under [gateway] for local use')
     return 0
 
 

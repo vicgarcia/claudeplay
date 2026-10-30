@@ -14,7 +14,7 @@ def test_serve_refuses_without_auth_section(tmp_path, capsys):
     with pytest.raises(SystemExit) as e:
         cli.main(['--config', str(path), 'serve'])
     assert e.value.code == 2
-    assert 'insecure-no-auth' in capsys.readouterr().err
+    assert 'insecure_no_auth' in capsys.readouterr().err
 
 
 def test_check_reports_servers(tmp_path, capsys):
@@ -34,3 +34,21 @@ def test_genkey_is_long_and_random(capsys):
             cli.main(['genkey'])
         keys.append(capsys.readouterr().out.strip())
     assert keys[0] != keys[1] and len(keys[0]) >= 48
+
+
+def test_config_switch_allows_no_auth_only_on_loopback(tmp_path, capsys, monkeypatch):
+    from claudeplay import gateway
+    served = []
+    monkeypatch.setattr(gateway, 'serve', lambda cfg, **kw: served.append(cfg))
+    path = tmp_path / 'config.toml'
+
+    path.write_text("[gateway]\ninsecure_no_auth = true\n" + NO_AUTH)
+    with pytest.raises(SystemExit) as e:
+        cli.main(['--config', str(path), 'serve'])
+    assert e.value.code == 0 and len(served) == 1
+
+    path.write_text("[gateway]\nhost = '0.0.0.0'\ninsecure_no_auth = true\n" + NO_AUTH)
+    with pytest.raises(SystemExit) as e:
+        cli.main(['--config', str(path), 'serve'])
+    assert e.value.code == 2 and len(served) == 1
+    assert 'refusing' in capsys.readouterr().err

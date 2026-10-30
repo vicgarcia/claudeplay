@@ -93,6 +93,8 @@ class GatewayConfig:
     public_base_url: str = ''
     servers: tuple[ServerConfig, ...] = ()
     auth: AuthConfig | None = None
+    # local use only: serve without authentication when there is no [auth] section
+    insecure_no_auth: bool = False
 
     @property
     def base_url(self) -> str:
@@ -153,6 +155,9 @@ def parse(text: str) -> GatewayConfig:
     gw = raw.get('gateway', {})
     host = gw.get('host', DEFAULT_HOST)
     port = gw.get('port', DEFAULT_PORT)
+    insecure_no_auth = gw.get('insecure_no_auth', False)
+    if not isinstance(insecure_no_auth, bool):
+        raise ConfigError('gateway: insecure_no_auth must be true or false')
     if not isinstance(port, int) or isinstance(port, bool) or not 1 <= port <= 65535:
         raise ConfigError('gateway: port must be an integer between 1 and 65535')
 
@@ -166,6 +171,7 @@ def parse(text: str) -> GatewayConfig:
         host=host,
         port=port,
         public_base_url=gw.get('public_base_url', ''),
+        insecure_no_auth=insecure_no_auth,
         servers=servers,
         auth=auth,
     )
@@ -227,7 +233,7 @@ def describe(cfg: GatewayConfig) -> list[str]:
     ''' the effective config as text, with every secret masked, safe to paste when debugging '''
     lines = [f'endpoint: {cfg.endpoint_url}', f'listen:   {cfg.host}:{cfg.port}']
     if cfg.auth is None:
-        lines.append('auth:     none')
+        lines.append('auth:     NONE (insecure_no_auth, local use only)' if cfg.insecure_no_auth else 'auth:     none')
     else:
         lines.append(f'auth:     github client {cfg.auth.client_id or "(missing)"}, allowed ids {list(cfg.auth.allowed_user_ids)}')
         lines.append(f'          client secret {MASK if cfg.auth.client_secret else "(missing)"}, '
