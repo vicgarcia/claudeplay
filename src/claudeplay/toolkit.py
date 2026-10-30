@@ -11,10 +11,9 @@ from mcp.types import ToolAnnotations
 NAME = 'claudeplay'
 
 INSTRUCTIONS = '''
-claudeplay is a personal productivity toolkit: journal and notes now, tasks and bookmarks later.
-the user often talks to it by voice, sometimes while driving. keep answers short and spoken-friendly:
-no tables, no long lists, summarise instead of reading raw content back. when you write something,
-say briefly what was written and where.
+claudeplay is a personal productivity toolkit over the user's own data.
+the journal is an obsidian vault of daily entries, one per day, each a narrative followed by freeform notes.
+journal tools take dates as YYYY-MM-DD; get_date gives today's date.
 '''.strip()
 
 
@@ -48,7 +47,7 @@ CATALOG: tuple[Entry, ...] = (
     Entry(
         name='journal_read',
         source='obsidian_read_journal_entry',
-        description="Read the journal entry for one day. Returns exists=false if there is no entry. Summarise it rather than reading it out verbatim.",
+        description="Read the journal entry for one day. Returns exists=false if there is no entry.",
         read_only=True,
         args={'date': 'the day, as YYYY-MM-DD'},
     ),
