@@ -4,7 +4,7 @@ A Windows system-tray app that exposes local stdio MCP servers (obsidian-mcp, to
 
 One gateway, one endpoint, one login. Auth is GitHub OAuth (through FastMCP's OAuth proxy), restricted to your numeric GitHub user id. See [plan.md](plan.md) for the design and what is verified.
 
-Status: the gateway, auth and tray run locally. The public tunnel (Cloudflare) is not built yet, so the connector is not reachable from claude.ai.
+Status: the tray runs the gateway and a named Cloudflare tunnel together, so the connector is reachable from claude.ai behind GitHub sign-in. Add a `[tunnel]` section to the config to enable it; the steps are in [config.example.toml](config.example.toml). Without one, it stays local.
 
 ## Install
 
@@ -67,7 +67,7 @@ Environment variables for development only:
 
 The servers are separate uv tools: `uv tool install` obsidian-mcp, todo-mcp and pinboard-mcp so their `.exe` files exist in `~/.local/bin`.
 
-`serve` and `tray` refuse to run without an `[auth]` section, unless `insecure_no_auth = true` is set under `[gateway]` (or `--insecure-no-auth` is passed). That is for local use only: it is refused unless the gateway listens on 127.0.0.1, and it must be removed before any tunnel exists.
+`serve` and `tray` refuse to run without an `[auth]` section, unless `insecure_no_auth = true` is set under `[gateway]` (or `--insecure-no-auth` is passed). That is for local use only: it is refused unless the gateway listens on 127.0.0.1, and also while a `[tunnel]` is enabled.
 
 The logon shortcut runs `pythonw.exe -m claudeplay tray` from the tool's environment rather than the `claudeplay-tray.exe` stub: Smart App Control blocks the per-install stubs uv generates, but allows the standard interpreter.
 

@@ -2,6 +2,7 @@
 
 import ctypes
 import logging
+import math
 import os
 import threading
 from pathlib import Path
@@ -26,13 +27,41 @@ COLORS = {
 }
 
 
+def _arc(cx: float, cy: float, r: float, start: float, end: float) -> list[tuple[float, float]]:
+    ''' points along a circle, angles in degrees (0 = right, 90 = down) '''
+    steps = 48
+    angles = (math.radians(start + (end - start) * i / steps) for i in range(steps + 1))
+    return [(cx + r * math.cos(a), cy + r * math.sin(a)) for a in angles]
+
+
+# the wire of an upright paperclip on a 256px canvas: up the outer left leg, over, down the right,
+# under, up the inner left leg, over, and down to the free end
+PAPERCLIP = [
+    (76, 177),
+    *_arc(128, 87, 52, 180, 360),
+    *_arc(146, 187, 34, 0, 180),
+    *_arc(128, 103, 16, 180, 360),
+    (144, 167),
+]
+
+
+def _stroke(draw: ImageDraw.ImageDraw, points: list[tuple[float, float]], width: int, fill: str) -> None:
+    ''' a polyline with round joints and ends, which ImageDraw.line does not do '''
+    draw.line(points, fill=fill, width=width)
+    r = width / 2
+    for x, y in points:
+        draw.ellipse((x - r, y - r, x + r, y + r), fill=fill)
+
+
 def make_icon(state: str) -> Image.Image:
-    ''' a filled circle in the state colour on a transparent background '''
-    size = 64
-    image = Image.new('RGBA', (size, size), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(image)
-    draw.ellipse((4, 4, size - 4, size - 4), fill=COLORS.get(state, COLORS[supervisor.STOPPED]), outline='#1f2328', width=3)
-    return image
+    ''' a white paperclip on a disc in the state colour, drawn large and scaled down to smooth the edges '''
+    size = 256
+    disc = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+    ImageDraw.Draw(disc).ellipse((4, 4, size - 4, size - 4), fill=COLORS.get(state, COLORS[supervisor.STOPPED]))
+    clip = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+    _stroke(ImageDraw.Draw(clip), PAPERCLIP, 18, '#ffffff')
+    clip = clip.rotate(-40, resample=Image.BICUBIC, center=(128, 128))
+    return Image.alpha_composite(disc, clip).resize((64, 64), Image.LANCZOS)
 
 
 def message_box(text: str, title: str = 'claudeplay') -> None:
@@ -78,6 +107,8 @@ class TrayApp:
         servers = [self.server_item(s.name) for s in self.cfg.servers]
         return pystray.Menu(
             pystray.MenuItem(lambda _item: f'claudeplay: {self.sup.state()}', None, enabled=False),
+            pystray.MenuItem(lambda _item: f'tunnel: {self.sup.tunnel_state()}', None, enabled=False,
+                             visible=lambda _item: self.cfg.tunnel_enabled),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem('Start', lambda _i, _m: self.start(), visible=lambda _item: not self.running()),
             pystray.MenuItem('Stop', lambda _i, _m: self.stop(), visible=lambda _item: self.running()),
@@ -159,10 +190,13 @@ class TrayApp:
     # status polling
 
     def refresh(self) -> None:
+        self.sup.check_tunnel()
         state = self.sup.state()
         if state != self._last_state:
             if state == supervisor.CRASHED:
                 self.notify('the gateway stopped unexpectedly; see the logs')
+            elif state == supervisor.DEGRADED and self.sup.tunnel_state() == supervisor.TUNNEL_DOWN:
+                self.notify('the tunnel is down; retrying')
             self._last_state = state
             self.icon.icon = make_icon(state)
             self.icon.title = f'claudeplay: {state}'

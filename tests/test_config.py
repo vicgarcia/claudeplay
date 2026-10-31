@@ -74,11 +74,23 @@ def test_resolve_fails_on_unset_variable_in_env():
     '[servers.x]\ncommand = "c"\n[servers.x.env]\nA = 1',
     '[gateway]\nport = 0',
     '[auth]\nallowed_user_ids = ["123"]',
+    '[tunnel]\ncommand = "c"',
+    '[tunnel]\nname = "t"\nenabled = 1',
     'not toml [',
 ])
 def test_parse_rejects_bad_config(text):
     with pytest.raises(config.ConfigError):
         config.parse(text)
+
+
+def test_tunnel_section_and_public_host():
+    cfg = config.parse("[gateway]\npublic_base_url = 'https://cp-x.example.net/'\n\n[tunnel]\nname = 'claudeplay'\n")
+    assert cfg.tunnel == config.TunnelConfig(name='claudeplay', command=config.DEFAULT_CLOUDFLARED, enabled=True)
+    assert cfg.tunnel_enabled and cfg.public_host == 'cp-x.example.net'
+    assert cfg.endpoint_url == 'https://cp-x.example.net/mcp'
+    off = config.parse("[tunnel]\nname = 't'\nenabled = false\n")
+    assert not off.tunnel_enabled and off.public_host == ''
+    assert config.parse('').tunnel is None
 
 
 def test_load_missing_file(tmp_path):

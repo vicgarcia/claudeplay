@@ -34,6 +34,8 @@ def cmd_serve(args: argparse.Namespace) -> int:
     elif args.insecure_no_auth or cfg.insecure_no_auth:
         if cfg.host not in LOOPBACK:
             raise config.ConfigError(f'refusing to serve without authentication on {cfg.host}; use 127.0.0.1')
+        if cfg.tunnel_enabled:
+            raise config.ConfigError('refusing to serve without authentication while a [tunnel] is enabled')
         logging.getLogger('claudeplay').warning('serving WITHOUT authentication (local use only)')
         gateway.serve(cfg, raw=args.raw)
     else:

@@ -52,3 +52,15 @@ def test_config_switch_allows_no_auth_only_on_loopback(tmp_path, capsys, monkeyp
         cli.main(['--config', str(path), 'serve'])
     assert e.value.code == 2 and len(served) == 1
     assert 'refusing' in capsys.readouterr().err
+
+
+def test_no_auth_is_refused_while_a_tunnel_is_enabled(tmp_path, capsys, monkeypatch):
+    from claudeplay import gateway
+    served = []
+    monkeypatch.setattr(gateway, 'serve', lambda cfg, **kw: served.append(cfg))
+    path = tmp_path / 'config.toml'
+    path.write_text("[gateway]\ninsecure_no_auth = true\n\n[tunnel]\nname = 't'\n" + NO_AUTH)
+    with pytest.raises(SystemExit) as e:
+        cli.main(['--config', str(path), 'serve', '--insecure-no-auth'])
+    assert e.value.code == 2 and served == []
+    assert 'tunnel' in capsys.readouterr().err

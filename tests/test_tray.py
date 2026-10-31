@@ -26,6 +26,12 @@ class StubSupervisor:
     def servers(self):
         return self.status
 
+    def tunnel_state(self):
+        return supervisor.TUNNEL_OFF
+
+    def check_tunnel(self):
+        pass
+
     def start(self):
         self.calls.append('start')
         self._alive = True
@@ -52,18 +58,29 @@ def app(tmp_path):
     return tray.TrayApp(sup, config.load(path), path)
 
 
+def disc_colour(image):
+    ''' the commonest opaque colour other than the white clip '''
+    colours = image.getcolors(64 * 64)
+    return max((c for c in colours if c[1][3] == 255 and c[1][:3] != (255, 255, 255)), key=lambda c: c[0])[1][:3]
+
+
 def test_icon_color_follows_state():
     seen = {}
     for state, color in tray.COLORS.items():
         image = tray.make_icon(state)
         assert image.size == (64, 64)
-        seen[state] = image.getpixel((32, 32))[:3]
+        seen[state] = disc_colour(image)
     assert len(set(seen.values())) == len(tray.COLORS)
     assert seen[supervisor.RUNNING] == (0x2e, 0xa0, 0x43)
 
 
+def test_icon_has_a_white_clip_on_the_disc():
+    colours = tray.make_icon(supervisor.RUNNING).getcolors(64 * 64)
+    assert sum(n for n, c in colours if c == (255, 255, 255, 255)) > 100
+
+
 def test_unknown_state_falls_back_to_stopped_colour():
-    assert tray.make_icon('weird').getpixel((32, 32)) == tray.make_icon(supervisor.STOPPED).getpixel((32, 32))
+    assert disc_colour(tray.make_icon('weird')) == disc_colour(tray.make_icon(supervisor.STOPPED))
 
 
 def test_server_label_shows_state_or_error():

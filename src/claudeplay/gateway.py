@@ -203,12 +203,19 @@ def serve(cfg: config.GatewayConfig, auth: Any = None, extra_middleware: tuple[M
     board = StatusBoard(config.status_path(), cfg.endpoint_url)
     gw, board = build(cfg, board=board, auth=auth, extra_middleware=extra_middleware, raw=raw)
     log.info('gateway starting on %s:%d', cfg.host, cfg.port)
+    # fastmcp leaves Host/Origin checks off by default. with them on, only localhost and the tunnel's
+    # hostname get through. the origin is listed because the tunnel reaches us over plain http, so
+    # fastmcp's same-origin fallback would not match a browser's https origin on the login pages
+    public = bool(cfg.public_host)
     try:
         gw.run(
             transport='http',
             host=cfg.host,
             port=cfg.port,
             show_banner=False,
+            host_origin_protection=True,
+            allowed_hosts=[cfg.public_host] if public else None,
+            allowed_origins=[cfg.base_url] if public else None,
             uvicorn_config={'access_log': False},
         )
     finally:

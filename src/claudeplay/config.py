@@ -6,11 +6,14 @@ import secrets
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import tomlkit
 
 DEFAULT_HOST = '127.0.0.1'
 DEFAULT_PORT = 8765
+# where the winget/msi install puts it
+DEFAULT_CLOUDFLARED = 'C:/Program Files (x86)/cloudflared/cloudflared.exe'
 
 _ENV_REF = re.compile(r'\$\{([A-Za-z_][A-Za-z0-9_]*)\}')
 
@@ -87,12 +90,21 @@ class AuthConfig:
 
 
 @dataclass(frozen=True)
+class TunnelConfig:
+    ''' a named cloudflare tunnel, run by the tray next to the gateway '''
+    name: str
+    command: str = DEFAULT_CLOUDFLARED
+    enabled: bool = True
+
+
+@dataclass(frozen=True)
 class GatewayConfig:
     host: str = DEFAULT_HOST
     port: int = DEFAULT_PORT
     public_base_url: str = ''
     servers: tuple[ServerConfig, ...] = ()
     auth: AuthConfig | None = None
+    tunnel: TunnelConfig | None = None
     # local use only: serve without authentication when there is no [auth] section
     insecure_no_auth: bool = False
 
@@ -103,6 +115,15 @@ class GatewayConfig:
     @property
     def endpoint_url(self) -> str:
         return f'{self.base_url}/mcp'
+
+    @property
+    def public_host(self) -> str:
+        ''' the hostname requests arrive with through the tunnel, or '' for local use '''
+        return urlsplit(self.public_base_url).hostname or ''
+
+    @property
+    def tunnel_enabled(self) -> bool:
+        return self.tunnel is not None and self.tunnel.enabled
 
     def server(self, name: str) -> ServerConfig | None:
         return next((s for s in self.servers if s.name == name), None)
@@ -146,6 +167,19 @@ def _parse_auth(raw: dict) -> AuthConfig:
     )
 
 
+def _parse_tunnel(raw: dict) -> TunnelConfig:
+    name = raw.get('name')
+    if not isinstance(name, str) or not name:
+        raise ConfigError('tunnel: name is required (the name given to `cloudflared tunnel create`)')
+    command = raw.get('command', DEFAULT_CLOUDFLARED)
+    if not isinstance(command, str) or not command:
+        raise ConfigError('tunnel: command must be the path to cloudflared.exe')
+    enabled = raw.get('enabled', True)
+    if not isinstance(enabled, bool):
+        raise ConfigError('tunnel: enabled must be true or false')
+    return TunnelConfig(name=name, command=command, enabled=enabled)
+
+
 def parse(text: str) -> GatewayConfig:
     try:
         raw = tomllib.loads(text)
@@ -167,6 +201,7 @@ def parse(text: str) -> GatewayConfig:
     servers = tuple(_parse_server(name, s) for name, s in servers_raw.items())
 
     auth = _parse_auth(raw['auth']) if 'auth' in raw else None
+    tunnel = _parse_tunnel(raw['tunnel']) if 'tunnel' in raw else None
     return GatewayConfig(
         host=host,
         port=port,
@@ -174,6 +209,7 @@ def parse(text: str) -> GatewayConfig:
         insecure_no_auth=insecure_no_auth,
         servers=servers,
         auth=auth,
+        tunnel=tunnel,
     )
 
 
@@ -238,6 +274,10 @@ def describe(cfg: GatewayConfig) -> list[str]:
         lines.append(f'auth:     github client {cfg.auth.client_id or "(missing)"}, allowed ids {list(cfg.auth.allowed_user_ids)}')
         lines.append(f'          client secret {MASK if cfg.auth.client_secret else "(missing)"}, '
                      f'signing key {MASK if cfg.auth.jwt_signing_key else "(missing)"}')
+    if cfg.tunnel is None:
+        lines.append('tunnel:   none (local only)')
+    else:
+        lines.append(f'tunnel:   {cfg.tunnel.name} {"enabled" if cfg.tunnel.enabled else "disabled"}, {cfg.tunnel.command}')
     for s in cfg.servers:
         lines.append(f'server {s.name}: {"enabled" if s.enabled else "disabled"}')
         lines.append(f'  command {s.command}')

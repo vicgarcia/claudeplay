@@ -11,8 +11,17 @@ port = 8765
 # public https url once the tunnel exists; leave as localhost for local use
 public_base_url = 'http://localhost:8765'
 # local use without login while [auth] is not filled in; refused unless host is 127.0.0.1.
-# never set this once a tunnel exists.
+# refused while a [tunnel] is enabled.
 # insecure_no_auth = true
+
+# the tray runs this named tunnel next to the gateway. create it once with:
+#   cloudflared tunnel login
+#   cloudflared tunnel create claudeplay
+#   cloudflared tunnel route dns claudeplay <hostname>
+# then set public_base_url above to https://<hostname>. leave this out for local use.
+# [tunnel]
+# name = 'claudeplay'
+# command = 'C:/Program Files (x86)/cloudflared/cloudflared.exe'
 
 [auth]
 # github oauth app (Settings > Developer settings > OAuth Apps)
