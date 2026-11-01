@@ -173,13 +173,13 @@ def build(
 
     gw = FastMCP(
         toolkit.NAME,
-        instructions=toolkit.INSTRUCTIONS,
+        instructions=toolkit.instructions(cfg.tasks),
         auth=auth,
         lifespan=lifespan,
         middleware=[*extra_middleware, ToolLogMiddleware()],
     )
     if not raw:
-        gw.add_transform(toolkit.Catalog())
+        gw.add_transform(toolkit.Catalog(toolkit.catalog(cfg.tasks)))
 
     for server in cfg.servers:
         if not server.enabled:

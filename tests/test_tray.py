@@ -44,10 +44,6 @@ class StubSupervisor:
         self.calls.append('restart')
         self._alive = True
 
-    def kill(self):
-        self.calls.append('kill')
-        self._alive = False
-
 
 @pytest.fixture
 def app(tmp_path):
@@ -59,7 +55,7 @@ def app(tmp_path):
 
 
 def disc_colour(image):
-    ''' the commonest opaque colour other than the white clip '''
+    ''' the commonest opaque colour other than the white sparkle '''
     colours = image.getcolors(64 * 64)
     return max((c for c in colours if c[1][3] == 255 and c[1][:3] != (255, 255, 255)), key=lambda c: c[0])[1][:3]
 
@@ -74,7 +70,7 @@ def test_icon_color_follows_state():
     assert seen[supervisor.RUNNING] == (0x2e, 0xa0, 0x43)
 
 
-def test_icon_has_a_white_clip_on_the_disc():
+def test_icon_has_a_white_sparkle_on_the_disc():
     colours = tray.make_icon(supervisor.RUNNING).getcolors(64 * 64)
     assert sum(n for n, c in colours if c == (255, 255, 255, 255)) > 100
 
@@ -92,9 +88,10 @@ def test_server_label_shows_state_or_error():
 
 def test_menu_has_the_required_controls(app):
     labels = [item.text for item in app.build_menu().items if item.text]
-    for expected in ('Start', 'Stop', 'Restart', 'Servers', 'Copy connector URL', 'Open logs folder',
-                     'Kill switch (stop everything)', 'Quit'):
+    for expected in ('Start', 'Stop', 'Restart', 'Servers', 'Copy connector URL', 'Open config folder',
+                     'Quit'):
         assert expected in labels
+    assert not any('kill' in label.lower() for label in labels)
 
 
 def test_start_and_stop_are_mutually_visible(app):
@@ -120,17 +117,20 @@ def test_toggle_server_persists_and_restarts_only_when_running(app):
     assert app.sup.calls == ['start', 'restart']
 
 
-def test_kill_switch_calls_kill_not_stop(app):
-    app.sup.start()
-    app.kill()
-    assert app.sup.calls == ['start', 'kill']
-
-
 def test_copy_url_uses_the_connector_endpoint(app, monkeypatch):
     copied = []
     monkeypatch.setattr(winutil, 'copy_to_clipboard', copied.append)
     app.copy_url()
     assert copied == ['http://localhost:8765/mcp']
+
+
+def test_open_config_folder_opens_the_parent_of_the_logs_folder(app, monkeypatch, tmp_path):
+    monkeypatch.setenv('CLAUDEPLAY_HOME', str(tmp_path / 'home'))
+    opened = []
+    monkeypatch.setattr(tray.os, 'startfile', opened.append, raising=False)
+    app.open_config_folder()
+    assert opened == [config.logs_dir().parent]
+    assert opened[0].is_dir()
 
 
 def test_single_instance_guard():

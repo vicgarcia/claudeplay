@@ -98,6 +98,13 @@ class TunnelConfig:
 
 
 @dataclass(frozen=True)
+class TasksConfig:
+    ''' account-specific task lists: name to id for the common ones, and the names tasks_due_today covers '''
+    common_lists: dict[str, str] = field(default_factory=dict)
+    due_today: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class GatewayConfig:
     host: str = DEFAULT_HOST
     port: int = DEFAULT_PORT
@@ -105,6 +112,7 @@ class GatewayConfig:
     servers: tuple[ServerConfig, ...] = ()
     auth: AuthConfig | None = None
     tunnel: TunnelConfig | None = None
+    tasks: TasksConfig = field(default_factory=TasksConfig)
     # local use only: serve without authentication when there is no [auth] section
     insecure_no_auth: bool = False
 
@@ -180,6 +188,19 @@ def _parse_tunnel(raw: dict) -> TunnelConfig:
     return TunnelConfig(name=name, command=command, enabled=enabled)
 
 
+def _parse_tasks(raw: dict) -> TasksConfig:
+    lists = raw.get('common_lists', {})
+    if not isinstance(lists, dict) or not all(isinstance(v, str) and v for v in lists.values()):
+        raise ConfigError('tasks: common_lists must be a table of list name to list id')
+    due_today = raw.get('due_today', [])
+    if not isinstance(due_today, list) or not all(isinstance(n, str) for n in due_today):
+        raise ConfigError('tasks: due_today must be a list of list names')
+    unknown = [n for n in due_today if n not in lists]
+    if unknown:
+        raise ConfigError(f'tasks: due_today names lists missing from common_lists: {", ".join(unknown)}')
+    return TasksConfig(common_lists=dict(lists), due_today=tuple(due_today))
+
+
 def parse(text: str) -> GatewayConfig:
     try:
         raw = tomllib.loads(text)
@@ -210,6 +231,7 @@ def parse(text: str) -> GatewayConfig:
         servers=servers,
         auth=auth,
         tunnel=tunnel,
+        tasks=_parse_tasks(raw.get('tasks', {})),
     )
 
 
@@ -278,6 +300,8 @@ def describe(cfg: GatewayConfig) -> list[str]:
         lines.append('tunnel:   none (local only)')
     else:
         lines.append(f'tunnel:   {cfg.tunnel.name} {"enabled" if cfg.tunnel.enabled else "disabled"}, {cfg.tunnel.command}')
+    if cfg.tasks.common_lists:
+        lines.append(f'tasks:    common lists {", ".join(cfg.tasks.common_lists)}; due today {", ".join(cfg.tasks.due_today) or "(off)"}')
     for s in cfg.servers:
         lines.append(f'server {s.name}: {"enabled" if s.enabled else "disabled"}')
         lines.append(f'  command {s.command}')

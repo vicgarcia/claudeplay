@@ -1,6 +1,6 @@
 # claudeplay
 
-Windows tray app exposing local stdio MCP servers as one claude.ai connector. Read [plan.md](plan.md) first: it is the source of truth for decisions, phases and verified API behaviour. Settled decisions (one gateway and endpoint, GitHub OAuth via FastMCP's proxy with a numeric-id allow-list, Cloudflare Tunnel on example.net, runs at logon, uv tool, pystray, own `config.toml`, todo-mcp untouched) are not up for re-litigation.
+Windows tray app exposing local stdio MCP servers as one claude.ai connector. [docs/](docs/README.md) describes how it works now; update it when behaviour changes, and keep real hostnames and ids out of it. Read [plan.md](plan.md) first: it is the source of truth for decisions, phases and verified API behaviour. Settled decisions (one gateway and endpoint, GitHub OAuth via FastMCP's proxy with a numeric-id allow-list, Cloudflare Tunnel on example.net, runs at logon, uv tool, pystray, own `config.toml`, todo-mcp untouched) are not up for re-litigation.
 
 ## Structure
 
@@ -30,7 +30,7 @@ uv is not on PATH. Windows Application Control sometimes blocks the venv's `pyte
 
 ## The toolkit
 
-Claude sees only what `toolkit.CATALOG` lists: domain names (`journal_*`, later `tasks_*`, `bookmarks_*`), our own descriptions and annotations, routed to backend tools mounted as `<server>_<tool>`. Everything else from a backend (tools, prompts, resources) is hidden. To add a tool, add an `Entry`; put real logic in the backend repo, not here. `claudeplay serve --raw` exposes every backend tool for debugging.
+Claude sees only what `toolkit.CATALOG` lists: domain names (`journal_*`, `tasks_*`, `bookmarks_*`), our own descriptions and annotations, routed to backend tools mounted as `<server>_<tool>`. Everything else from a backend (tools, prompts, resources) is hidden. To add a tool, add an `Entry`; put real logic in the backend repo, not here. `claudeplay serve --raw` exposes every backend tool for debugging.
 
 ## Gotchas learned the hard way
 

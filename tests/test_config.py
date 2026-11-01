@@ -170,3 +170,12 @@ def test_describe_masks_every_secret(tmp_path):
     for secret in ('top-secret', 'todo-secret', cfg.auth.jwt_signing_key):
         assert secret not in text
     assert 'abc' in text and '[42]' in text and 'TODO_CLIENT_SECRET=' in text and 'todo: disabled' in text
+
+
+def test_tasks_section_is_parsed_and_checked():
+    tasks = config.parse("[tasks]\ndue_today = ['Chores']\n[tasks.common_lists]\nChores = 'id-1'\nGrocery = 'id-2'\n").tasks
+    assert tasks.common_lists == {'Chores': 'id-1', 'Grocery': 'id-2'}
+    assert tasks.due_today == ('Chores',)
+    assert config.parse('').tasks == config.TasksConfig()
+    with pytest.raises(config.ConfigError, match='Health'):
+        config.parse("[tasks]\ndue_today = ['Health']\n[tasks.common_lists]\nChores = 'id-1'\n")

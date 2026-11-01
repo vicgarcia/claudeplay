@@ -151,10 +151,6 @@ class Supervisor:
             log.warning('gateway did not exit after taskkill')
         log.info('gateway stopped')
 
-    def kill(self) -> None:
-        ''' kill switch: tunnel and gateway down together '''
-        self.stop()
-
     @staticmethod
     def kill_tree(pid: int) -> None:
         winutil.run_hidden(['taskkill', '/PID', str(pid), '/T', '/F'])

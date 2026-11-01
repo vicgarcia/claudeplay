@@ -42,7 +42,7 @@ def sup(tmp_path):
     path = write_config(tmp_path, port)
     s = Supervisor(config.load(path), path, ['--insecure-no-auth'])
     yield s
-    s.kill()
+    s.stop()
 
 
 def test_start_reports_running_then_stop_frees_the_port(sup):
@@ -66,10 +66,10 @@ def test_start_is_idempotent(sup):
     assert sup._proc.pid == pid
 
 
-def test_kill_switch_stops_immediately(sup):
+def test_stop_is_immediate(sup):
     sup.start()
     assert wait_for(lambda: sup.state() == supervisor.RUNNING)
-    sup.kill()
+    sup.stop()
     assert sup.state() == supervisor.STOPPED
     assert wait_for(lambda: not winutil.port_in_use(sup.cfg.host, sup.cfg.port), 10)
 
@@ -125,7 +125,7 @@ def test_tunnel_command_runs_the_named_tunnel_against_the_gateway(tmp_path):
     assert cmd[-4:] == ['run', '--url', 'http://127.0.0.1:9999', 'claudeplay']
 
 
-def test_tunnel_starts_with_the_gateway_and_the_kill_switch_takes_both(tmp_path, monkeypatch):
+def test_tunnel_starts_with_the_gateway_and_stop_takes_both(tmp_path, monkeypatch):
     s = tunnel_sup(tmp_path, monkeypatch)
     try:
         assert s.tunnel_state() == supervisor.TUNNEL_OFF
@@ -133,11 +133,11 @@ def test_tunnel_starts_with_the_gateway_and_the_kill_switch_takes_both(tmp_path,
         assert s.tunnel_state() == supervisor.TUNNEL_UP
         tunnel_pid = s._tunnel.pid
         assert wait_for(lambda: s.state() == supervisor.RUNNING), s.state()
-        s.kill()
+        s.stop()
         assert s.tunnel_state() == supervisor.TUNNEL_OFF and s.state() == supervisor.STOPPED
         assert wait_for(lambda: not winutil.pid_alive(tunnel_pid), 10)
     finally:
-        s.kill()
+        s.stop()
 
 
 def test_dead_tunnel_degrades_and_is_restarted(tmp_path, monkeypatch):
@@ -157,7 +157,7 @@ def test_dead_tunnel_degrades_and_is_restarted(tmp_path, monkeypatch):
         assert s.tunnel_state() == supervisor.TUNNEL_UP and s._tunnel.pid != first
         assert s.state() == supervisor.RUNNING
     finally:
-        s.kill()
+        s.stop()
 
 
 def test_missing_cloudflared_leaves_the_gateway_running(tmp_path, monkeypatch):
@@ -167,7 +167,7 @@ def test_missing_cloudflared_leaves_the_gateway_running(tmp_path, monkeypatch):
         assert s.alive() and s.tunnel_state() == supervisor.TUNNEL_DOWN
         assert wait_for(lambda: s.state() == supervisor.DEGRADED), s.state()
     finally:
-        s.kill()
+        s.stop()
 
 
 def test_gateway_accepts_the_public_host_and_rejects_others(tmp_path, monkeypatch):
@@ -194,4 +194,4 @@ def test_gateway_accepts_the_public_host_and_rejects_others(tmp_path, monkeypatc
         assert status('cp-test.example.net') != 421
         assert status(f'localhost:{port}') != 421
     finally:
-        s.kill()
+        s.stop()

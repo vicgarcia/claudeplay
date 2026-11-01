@@ -36,11 +36,14 @@ command = 'C:/Users/<you>/.local/bin/obsidian-mcp.exe'
 args = ['--vault', 'C:/path/to/vault']
 enabled = true
 
-[servers.obsidian.env]
-TZ = 'America/New_York'
+# "today" follows the laptop's time zone; set TZ here only to override it
+# [servers.obsidian.env]
+# TZ = 'America/New_York'
 
 [servers.todo]
-command = 'C:/Users/<you>/.local/bin/todo-mcp.exe'
+# python.exe, not todo-mcp.exe: smart app control blocks the uv launcher stub
+command = 'C:/Users/<you>/AppData/Roaming/uv/tools/todo-mcp/Scripts/python.exe'
+args = ['-c', 'from todo_mcp.server import run; run()']
 enabled = false
 
 [servers.todo.env]
@@ -48,6 +51,15 @@ enabled = false
 TODO_CLIENT_ID = ''
 TODO_CLIENT_SECRET = ''
 TODO_REFRESH_TOKEN = ''
+
+# your own task lists: the ids of common_lists are published in the tasks_lists description, and
+# tasks_due_today covers the lists named in due_today. get the ids from the tasks_lists tool.
+# [tasks]
+# due_today = ['Tasks', 'Chores']
+# [tasks.common_lists]
+# Tasks = '<list id>'
+# Chores = '<list id>'
+# Grocery = '<list id>'
 
 [servers.pinboard]
 command = 'C:/Users/<you>/.local/bin/pinboard-mcp.exe'
@@ -57,3 +69,13 @@ enabled = false
 [servers.pinboard.env]
 # pinboard.in settings > password > api token, format username:TOKEN
 PINBOARD_TOKEN = ''
+
+[servers.windows]
+# gives whoever signs in a shell and full file access on this pc, as you. pinned, so a public connector
+# does not pull new code on every start.
+command = 'C:/Users/<you>/.local/bin/uvx.exe'
+args = ['windows-mcp==0.8.7', 'serve']
+enabled = false
+
+[servers.windows.env]
+ANONYMIZED_TELEMETRY = 'false'

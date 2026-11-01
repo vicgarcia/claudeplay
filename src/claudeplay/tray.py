@@ -1,4 +1,4 @@
-'''system-tray ui: status colour, start/stop, per-server toggles, copy url, logs, kill switch'''
+'''system-tray ui: status colour, start/stop, per-server toggles, copy url, config folder'''
 
 import ctypes
 import logging
@@ -27,41 +27,29 @@ COLORS = {
 }
 
 
-def _arc(cx: float, cy: float, r: float, start: float, end: float) -> list[tuple[float, float]]:
-    ''' points along a circle, angles in degrees (0 = right, 90 = down) '''
-    steps = 48
-    angles = (math.radians(start + (end - start) * i / steps) for i in range(steps + 1))
-    return [(cx + r * math.cos(a), cy + r * math.sin(a)) for a in angles]
+def _star_points(cx: float, cy: float, radius: float) -> list[tuple[float, float]]:
+    ''' a four-point star with concave sides '''
+    points = []
+    for step in range(120):
+        angle = step * math.tau / 120
+        x, y = math.cos(angle), math.sin(angle)
+        points.append((cx + radius * math.copysign(abs(x) ** 3.8, x), cy + radius * math.copysign(abs(y) ** 3.8, y)))
+    return points
 
 
-# the wire of an upright paperclip on a 256px canvas: up the outer left leg, over, down the right,
-# under, up the inner left leg, over, and down to the free end
-PAPERCLIP = [
-    (76, 177),
-    *_arc(128, 87, 52, 180, 360),
-    *_arc(146, 187, 34, 0, 180),
-    *_arc(128, 103, 16, 180, 360),
-    (144, 167),
-]
-
-
-def _stroke(draw: ImageDraw.ImageDraw, points: list[tuple[float, float]], width: int, fill: str) -> None:
-    ''' a polyline with round joints and ends, which ImageDraw.line does not do '''
-    draw.line(points, fill=fill, width=width)
-    r = width / 2
-    for x, y in points:
-        draw.ellipse((x - r, y - r, x + r, y + r), fill=fill)
+def _draw_sparkle(draw: ImageDraw.ImageDraw) -> None:
+    ''' a large star and a small one on a 256px canvas '''
+    draw.polygon(_star_points(116, 140, 100), fill='#ffffff')
+    draw.polygon(_star_points(176, 80, 34), fill='#ffffff')
 
 
 def make_icon(state: str) -> Image.Image:
-    ''' a white paperclip on a disc in the state colour, drawn large and scaled down to smooth the edges '''
+    ''' a white sparkle on a disc in the state colour, drawn large and scaled down to smooth the edges '''
     size = 256
     disc = Image.new('RGBA', (size, size), (0, 0, 0, 0))
     ImageDraw.Draw(disc).ellipse((4, 4, size - 4, size - 4), fill=COLORS.get(state, COLORS[supervisor.STOPPED]))
-    clip = Image.new('RGBA', (size, size), (0, 0, 0, 0))
-    _stroke(ImageDraw.Draw(clip), PAPERCLIP, 18, '#ffffff')
-    clip = clip.rotate(-40, resample=Image.BICUBIC, center=(128, 128))
-    return Image.alpha_composite(disc, clip).resize((64, 64), Image.LANCZOS)
+    _draw_sparkle(ImageDraw.Draw(disc))
+    return disc.resize((64, 64), Image.LANCZOS)
 
 
 def message_box(text: str, title: str = 'claudeplay') -> None:
@@ -107,7 +95,7 @@ class TrayApp:
         servers = [self.server_item(s.name) for s in self.cfg.servers]
         return pystray.Menu(
             pystray.MenuItem(lambda _item: f'claudeplay: {self.sup.state()}', None, enabled=False),
-            pystray.MenuItem(lambda _item: f'tunnel: {self.sup.tunnel_state()}', None, enabled=False,
+            pystray.MenuItem(lambda _item: f'cloudflare: {self.sup.tunnel_state()}', None, enabled=False,
                              visible=lambda _item: self.cfg.tunnel_enabled),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem('Start', lambda _i, _m: self.start(), visible=lambda _item: not self.running()),
@@ -116,9 +104,8 @@ class TrayApp:
             pystray.MenuItem('Servers', pystray.Menu(*servers), enabled=bool(servers)),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem('Copy connector URL', lambda _i, _m: self.copy_url()),
-            pystray.MenuItem('Open logs folder', lambda _i, _m: self.open_logs()),
+            pystray.MenuItem('Open config folder', lambda _i, _m: self.open_config_folder()),
             pystray.Menu.SEPARATOR,
-            pystray.MenuItem('Kill switch (stop everything)', lambda _i, _m: self.kill()),
             pystray.MenuItem('Quit', lambda _i, _m: self.quit()),
         )
 
@@ -152,11 +139,6 @@ class TrayApp:
             self.notify(str(e))
         self.refresh()
 
-    def kill(self) -> None:
-        self.sup.kill()
-        self.refresh()
-        self.notify('everything stopped')
-
     def toggle_server(self, name: str) -> None:
         enabled = not self.server_enabled(name)
         try:
@@ -178,9 +160,9 @@ class TrayApp:
     def copy_url(self) -> None:
         winutil.copy_to_clipboard(self.cfg.endpoint_url)
 
-    def open_logs(self) -> None:
-        config.logs_dir().mkdir(parents=True, exist_ok=True)
-        os.startfile(config.logs_dir())
+    def open_config_folder(self) -> None:
+        config.data_dir().mkdir(parents=True, exist_ok=True)
+        os.startfile(config.data_dir())
 
     def quit(self) -> None:
         self.sup.stop()
