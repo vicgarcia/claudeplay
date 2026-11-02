@@ -9,7 +9,7 @@ from fastmcp import Client
 from claudeplay import config, gateway, toolkit
 
 FAKE_OBSIDIAN = str(Path(__file__).parent / 'fake_obsidian.py')
-EXPECTED = ['get_date', 'journal_list_month', 'journal_read', 'journal_append', 'projects_list', 'projects_files',
+EXPECTED = ['get_todays_date', 'get_current_timestamp', 'journal_list_month', 'journal_read', 'journal_append', 'projects_list', 'projects_files',
             'projects_create', 'projects_read', 'projects_write', 'wiki_list', 'wiki_read']
 
 
@@ -55,17 +55,29 @@ def test_descriptions_annotations_and_argument_docs_come_from_the_catalog():
 
 def test_calls_route_to_the_backend():
     async def steps(client):
-        date = payload(await client.call_tool('get_date', {}))
         month = payload(await client.call_tool('journal_list_month', {'year': '2026', 'month': '10'}))
         appended = payload(await client.call_tool('journal_append', {'text': 'saw a heron'}))
-        today = payload(await client.call_tool('journal_read', {'date': date['formatted']}))
-        return date, month, appended, today
+        today = payload(await client.call_tool('journal_read', {'date': '2026-10-29'}))
+        return month, appended, today
 
-    date, month, appended, today = run(config.GatewayConfig(servers=(obsidian(),)), steps)
-    assert date['formatted'] == '2026-10-29'
+    month, appended, today = run(config.GatewayConfig(servers=(obsidian(),)), steps)
     assert [e['name'] for e in month] == ['2026-10-01.md']
     assert appended['created'] is True
     assert today == {'path': 'journal/2026-10-29.md', 'exists': True, 'content': 'saw a heron'}
+
+
+def test_clock_tools_work_with_no_backends_and_do_not_use_obsidian():
+    async def steps(client):
+        names = [t.name for t in await client.list_tools()]
+        date = payload(await client.call_tool('get_todays_date', {}))
+        stamp = payload(await client.call_tool('get_current_timestamp', {}))
+        return names, date, stamp
+
+    names, date, stamp = run(config.GatewayConfig(servers=()), steps)
+    assert names == ['get_todays_date', 'get_current_timestamp']
+    assert set(date) == {'date', 'day_of_week', 'month', 'day', 'year'}
+    assert set(stamp) == {'timestamp', 'timezone'}
+    assert stamp['timestamp'].startswith(date['date'])
 
 
 def test_listed_paths_work_with_the_read_and_write_tools():
@@ -165,7 +177,7 @@ def test_disabled_backend_simply_removes_its_tools():
     async def steps(client):
         return [t.name for t in await client.list_tools()]
 
-    assert run(config.GatewayConfig(servers=(off,)), steps) == []
+    assert run(config.GatewayConfig(servers=(off,)), steps) == ['get_todays_date', 'get_current_timestamp']
 
 
 def test_catalog_rejects_duplicate_names():
