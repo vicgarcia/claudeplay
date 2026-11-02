@@ -296,14 +296,15 @@ CATALOG: tuple[Entry, ...] = (
     Entry(
         name='tasks_update',
         source='todo_update_task',
-        description="Change a task's title, due date, notes, importance, status or recurrence. Only the arguments given change; new values replace the old ones.",
+        description="Change a task's title, due date, notes, importance, status or recurrence, or remove its due date or notes. Only the arguments given change; new values replace the old ones.",
         read_only=False,
         args={
             'task_id': 'the task, from tasks_list or tasks_due_today',
             'list_id': 'the list the task is in',
-            'title': 'new title',
+            'title': 'new title; it cannot be blank',
             'due_date': 'new due date, as YYYY-MM-DD',
-            'body_text': 'new notes, replacing the existing notes',
+            'clear_due_date': "true to remove the due date; can't be combined with due_date or recurrence_type",
+            'body_text': 'new notes, replacing the existing notes; an empty string removes them',
             'importance': 'one of low, normal, high',
             'status': 'one of notStarted, inProgress, completed, waitingOnOthers, deferred',
             'recurrence_type': 'one of daily, weekly, monthly',
