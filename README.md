@@ -1,10 +1,110 @@
 # claudeplay
 
-A Windows system-tray app that lets the Claude iPhone app, including voice mode, use tools on your laptop: an Obsidian journal, Pinboard bookmarks, files and a shell. They appear to Claude as one custom connector, behind GitHub sign-in and a Cloudflare Tunnel.
+A Windows system-tray app that lets the Claude iPhone app, including voice mode, use tools on your laptop: an Obsidian vault, Microsoft To Do tasks, Pinboard bookmarks, files, a shell and web pages. They appear to Claude as one custom connector, behind GitHub sign-in and a Cloudflare Tunnel.
 
 ```
 Claude on your phone -> claude.ai -> Cloudflare -> tunnel -> gateway on 127.0.0.1 -> local MCP servers
 ```
+
+The local tools are stdio MCP servers, which Claude's mobile app can't reach directly. The tray app runs them behind one HTTP endpoint and opens the tunnel without any inbound ports. Only your GitHub account can sign in.
+
+Claude doesn't see those servers' own tools. It sees a short, curated list with generic names and descriptions written for an agent, defined in [toolkit.py](src/claudeplay/toolkit.py). Everything else the servers offer is hidden and can't be called, even by name.
+
+The laptop has to be on, awake and online, though a locked screen should be fine. Calling the tools from voice mode, and using the laptop and web tools while it's locked, haven't been tested end to end yet.
+
+## Tools
+
+There are 24 tools in 8 sections. A section's tools only appear while its backend is enabled and running. The date and time tools are built into claudeplay, so they're always there.
+
+### Date and time
+
+Both follow the laptop's clock and time zone, which may differ from where you are.
+
+| Tool | What it does | Arguments |
+|---|---|---|
+| `get_todays_date` | Today's date as `YYYY-MM-DD`, plus the day of the week, month, day and year | None |
+| `get_current_timestamp` | The current time to the second, with the UTC offset and time zone name | None |
+
+### Journal
+
+Daily entries in the Obsidian vault, one per day. Backend: obsidian-mcp.
+
+| Tool | What it does | Arguments |
+|---|---|---|
+| `journal_list_month` | Lists which days in a month have an entry | `year`, `month` |
+| `journal_read` | Reads one day's entry, and says so if there isn't one | `date` |
+| `journal_append` | Adds a note to the end of today's entry, creating it if needed. Never changes what's already there | `text` |
+
+### Projects
+
+Folders of notes for ongoing work. Backend: obsidian-mcp.
+
+| Tool | What it does | Arguments |
+|---|---|---|
+| `projects_list` | Lists projects | None |
+| `projects_files` | Lists the files in a project, with their paths | `project` |
+| `projects_create` | Creates an empty project | `project` |
+| `projects_read` | Reads a file in a project | `file_path` |
+| `projects_write` | Creates a file in an existing project, or overwrites a whole file | `file_path`, `content` |
+
+`projects_read` and `projects_write` refuse any path outside a project. `projects_write` also refuses a project that doesn't exist yet, so a mistyped name can't create a new one.
+
+### Wiki
+
+Standalone articles. Read-only. Backend: obsidian-mcp.
+
+| Tool | What it does | Arguments |
+|---|---|---|
+| `wiki_list` | Lists articles, with their paths | None |
+| `wiki_read` | Reads an article, and refuses any path outside the wiki | `file_path` |
+
+### Tasks
+
+Microsoft To Do lists and tasks. Backend: todo-mcp.
+
+| Tool | What it does | Arguments |
+|---|---|---|
+| `tasks_lists` | Lists the task lists, with their ids | None |
+| `tasks_list` | Lists the tasks in one list, open tasks by default | `list_id`, `status`, `limit` |
+| `tasks_due_today` | Finds open tasks due today in your main lists. Leaves out overdue tasks | None |
+| `tasks_add` | Adds a task, optionally with a due date, notes, importance or recurrence | `title`, `list_id`, `due_date`, `body_text`, `importance`, `recurrence_type`, `recurrence_interval`, `recurrence_days_of_week`, `recurrence_day_of_month` |
+| `tasks_update` | Changes a task, or removes its due date or notes. Only the arguments given change | `task_id`, `list_id`, `title`, `due_date`, `clear_due_date`, `body_text`, `importance`, `status`, `recurrence_type`, `recurrence_interval`, `recurrence_days_of_week`, `recurrence_day_of_month`, `remove_recurrence` |
+| `tasks_complete` | Marks a task as completed | `task_id`, `list_id` |
+
+The `[tasks]` section of your config sets the main lists. `tasks_due_today` only appears when `due_today` is set, and ids in `common_lists` are added to the `tasks_lists` description so Claude can often skip that call.
+
+### Bookmarks
+
+Pinboard bookmarks. Backend: pinboard-mcp.
+
+| Tool | What it does | Arguments |
+|---|---|---|
+| `bookmarks_list` | Lists bookmarks, newest first, filtered by tag and date. Returns 50 by default, and there's no keyword search | `tags`, `start_date`, `end_date`, `limit` |
+| `bookmarks_add` | Saves a new bookmark, and fails if the URL is already saved | `url`, `title`, `description`, `tags`, `private`, `toread` |
+| `bookmarks_update` | Changes a bookmark, found by its URL. Only the arguments given change | `url`, `title`, `description`, `tags`, `private`, `toread` |
+
+The server instructions tell Claude to mark new bookmarks private unless you ask otherwise, but that's only an instruction. The backend's own default is public.
+
+### Laptop
+
+Files and a shell on the laptop, acting as you. Nothing with a window or a prompt will work, because the laptop is usually locked. Backend: windows-mcp.
+
+| Tool | What it does | Arguments |
+|---|---|---|
+| `pc_files` | Reads, writes, copies, moves, deletes, lists, searches or gets info on files, using absolute paths | `mode`, `path`, `destination`, `content`, `pattern`, `recursive`, `append`, `overwrite`, `offset`, `limit`, `show_hidden` |
+| `pc_shell` | Runs a PowerShell command and returns its output | `command`, `timeout` |
+
+These two can reach the whole laptop, including the vault, so the project and wiki limits don't apply to them. See [Security](docs/security.md) for the accepted risks.
+
+### Web
+
+Backend: windows-mcp.
+
+| Tool | What it does | Arguments |
+|---|---|---|
+| `web_fetch` | Gets the full text of a web page | `url`, `use_dom` |
+
+Headless is the default. It works while the laptop is locked, but pages that need JavaScript come back mostly empty and some sites block it. With `use_dom`, it reads the front tab of the laptop's browser instead, which handles JavaScript and logged-in pages, but the page must already be open and the laptop unlocked.
 
 ## Documentation
 
