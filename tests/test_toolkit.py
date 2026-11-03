@@ -9,7 +9,7 @@ from fastmcp import Client
 from claudeplay import config, gateway, toolkit
 
 FAKE_OBSIDIAN = str(Path(__file__).parent / 'fake_obsidian.py')
-EXPECTED = ['get_todays_date', 'get_current_timestamp', 'journal_list_month', 'journal_read', 'journal_append', 'projects_list', 'projects_files',
+EXPECTED = ['get_current_timestamp', 'journal_list_month', 'journal_read', 'journal_append', 'projects_list', 'projects_files',
             'projects_create', 'projects_read', 'projects_write', 'wiki_list', 'wiki_read']
 
 
@@ -66,18 +66,16 @@ def test_calls_route_to_the_backend():
     assert today == {'path': 'journal/2026-10-29.md', 'exists': True, 'content': 'saw a heron'}
 
 
-def test_clock_tools_work_with_no_backends_and_do_not_use_obsidian():
+def test_clock_tool_works_with_no_backends_and_does_not_use_obsidian():
     async def steps(client):
         names = [t.name for t in await client.list_tools()]
-        date = payload(await client.call_tool('get_todays_date', {}))
         stamp = payload(await client.call_tool('get_current_timestamp', {}))
-        return names, date, stamp
+        return names, stamp
 
-    names, date, stamp = run(config.GatewayConfig(servers=()), steps)
-    assert names == ['get_todays_date', 'get_current_timestamp']
-    assert set(date) == {'date', 'day_of_week', 'month', 'day', 'year'}
-    assert set(stamp) == {'timestamp', 'timezone'}
-    assert stamp['timestamp'].startswith(date['date'])
+    names, stamp = run(config.GatewayConfig(servers=()), steps)
+    assert names == ['get_current_timestamp']
+    assert set(stamp) == {'date', 'day_of_week', 'month', 'day', 'year', 'timestamp', 'timezone'}
+    assert stamp['timestamp'].startswith(stamp['date'])
 
 
 def test_listed_paths_work_with_the_read_and_write_tools():
@@ -177,7 +175,7 @@ def test_disabled_backend_simply_removes_its_tools():
     async def steps(client):
         return [t.name for t in await client.list_tools()]
 
-    assert run(config.GatewayConfig(servers=(off,)), steps) == ['get_todays_date', 'get_current_timestamp']
+    assert run(config.GatewayConfig(servers=(off,)), steps) == ['get_current_timestamp']
 
 
 def test_catalog_rejects_duplicate_names():
@@ -193,7 +191,8 @@ def test_catalog_names_are_valid_for_claude():
 
 def test_tasks_tools_route_to_todo_and_never_delete():
     tasks = [e for e in toolkit.CATALOG if e.name.startswith('tasks_')]
-    assert [e.name for e in tasks] == ['tasks_lists', 'tasks_list', 'tasks_add', 'tasks_update', 'tasks_complete']
+    assert [e.name for e in tasks] == ['tasks_get_lists', 'tasks_get_tasks', 'tasks_get_completed_between', 'tasks_add_task', 'tasks_update_task',
+                                       'tasks_complete_task', 'tasks_get_steps', 'tasks_add_step', 'tasks_update_step', 'tasks_complete_step']
     assert all(e.source.startswith('todo_') and 'delete' not in e.source for e in tasks)
 
 
@@ -211,18 +210,18 @@ def test_common_list_ids_are_published_with_a_note_about_other_lists():
         return {t.name: t for t in await client.list_tools()}, client.initialize_result
 
     tools, result = run(todo_config(TASKS), steps)
-    description = tools['tasks_lists'].description
+    description = tools['tasks_get_lists'].description
     for name, list_id in TASKS.common_lists.items():
         assert f'{name} = {list_id}' in description
     assert 'other lists' in description
-    assert 'tasks_lists description' in result.instructions
+    assert 'tasks_get_lists description' in result.instructions
 
 
 def test_tasks_due_today_always_uses_the_configured_lists():
     async def steps(client):
-        tool = next(t for t in await client.list_tools() if t.name == 'tasks_due_today')
-        ok = payload(await client.call_tool('tasks_due_today', {}))
-        bad = await client.call_tool('tasks_due_today', {'list_ids': ['id-other']}, raise_on_error=False)
+        tool = next(t for t in await client.list_tools() if t.name == 'tasks_get_due_today')
+        ok = payload(await client.call_tool('tasks_get_due_today', {}))
+        bad = await client.call_tool('tasks_get_due_today', {'list_ids': ['id-other']}, raise_on_error=False)
         return tool, ok, bad
 
     tool, ok, bad = run(todo_config(TASKS), steps)
@@ -232,20 +231,51 @@ def test_tasks_due_today_always_uses_the_configured_lists():
     assert bad.is_error
 
 
+def test_completed_search_defaults_to_the_main_lists_and_takes_others():
+    async def steps(client):
+        tool = next(t for t in await client.list_tools() if t.name == 'tasks_get_completed_between')
+        main = payload(await client.call_tool('tasks_get_completed_between', {'start_date': '2026-11-01'}))
+        other = payload(await client.call_tool('tasks_get_completed_between', {'start_date': '2026-11-01', 'list_ids': ['id-grocery']}))
+        return tool, main, other
+
+    tool, main, other = run(todo_config(TASKS), steps)
+    assert main['list_ids'] == ['id-chores', 'id-health']
+    assert other['list_ids'] == ['id-grocery']
+    assert tool.input_schema['required'] == ['start_date']
+    assert 'Chores, Health' in tool.description
+
+
+def test_without_task_config_the_completed_search_needs_list_ids():
+    async def steps(client):
+        return next(t for t in await client.list_tools() if t.name == 'tasks_get_completed_between')
+
+    tool = run(todo_config(config.TasksConfig()), steps)
+    assert set(tool.input_schema['required']) == {'list_ids', 'start_date'}
+
+
+def test_steps_route_to_todo():
+    async def steps(client):
+        return payload(await client.call_tool('tasks_get_steps', {'task_id': 'task-1', 'list_id': 'id-chores'}))
+
+    result = run(todo_config(TASKS), steps)
+    assert result['task_id'] == 'task-1'
+    assert result['steps'][0]['name'] == 'buy primer'
+
+
 def test_without_task_config_nothing_account_specific_is_published():
     async def steps(client):
         return {t.name: t for t in await client.list_tools()}, client.initialize_result
 
     tools, result = run(todo_config(config.TasksConfig()), steps)
-    assert 'tasks_due_today' not in tools
-    assert 'Commonly used' not in tools['tasks_lists'].description
+    assert 'tasks_get_due_today' not in tools
+    assert 'Commonly used' not in tools['tasks_get_lists'].description
     assert result.instructions == toolkit.INSTRUCTIONS
 
 
 def test_instructions_cover_the_common_workflows():
     assert 'narrative' not in toolkit.INSTRUCTIONS
     workflows = toolkit.INSTRUCTIONS.split('common workflows:')[1]
-    for tool in ('tasks_due_today', 'journal_append', 'journal_read', 'projects_write'):
+    for tool in ('tasks_get_due_today', 'tasks_get_completed_between', 'journal_append', 'journal_read', 'projects_write'):
         assert tool in workflows
     assert 'bookmarks' in workflows
 

@@ -52,8 +52,8 @@ TODO_CLIENT_ID = ''
 TODO_CLIENT_SECRET = ''
 TODO_REFRESH_TOKEN = ''
 
-# your own task lists: the ids of common_lists are published in the tasks_lists description, and
-# tasks_due_today covers the lists named in due_today. get the ids from the tasks_lists tool.
+# your own task lists: the ids of common_lists are published in the tasks_get_lists description, and
+# due_today names the main lists, which tasks_get_due_today and tasks_get_completed_between use. get the ids from the tasks_get_lists tool.
 # [tasks]
 # due_today = ['Tasks', 'Chores']
 # [tasks.common_lists]
@@ -62,7 +62,9 @@ TODO_REFRESH_TOKEN = ''
 # Grocery = '<list id>'
 
 [servers.pinboard]
-command = 'C:/Users/<you>/.local/bin/pinboard-mcp.exe'
+# python.exe, not pinboard-mcp.exe: smart app control blocks the uv launcher stub
+command = 'C:/Users/<you>/AppData/Roaming/uv/tools/pinboard-mcp/Scripts/python.exe'
+args = ['-c', 'from pinboard_mcp import run; run()']
 # pinboard-mcp checks its token at startup and exits if it is wrong
 enabled = false
 
