@@ -99,7 +99,7 @@ class TunnelConfig:
 
 @dataclass(frozen=True)
 class TasksConfig:
-    ''' account-specific task lists: name to id for the common ones, and the names tasks_due_today covers '''
+    ''' account-specific task lists: name to id for the common ones, and the names of the main lists, which tasks_get_due_today and tasks_get_completed_between use '''
     common_lists: dict[str, str] = field(default_factory=dict)
     due_today: tuple[str, ...] = ()
 

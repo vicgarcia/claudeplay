@@ -17,12 +17,17 @@ Claude doesn't see the backends. It sees one server called `claudeplay` with a s
 | `projects_write` | Creates a file in an existing project, or overwrites a whole one | obsidian `write_file`, limited by claudeplay |
 | `wiki_list` | Lists wiki articles | obsidian `list_wiki` |
 | `wiki_read` | Reads a wiki article. There's no tool for writing to the wiki | obsidian `read_file`, limited by claudeplay |
-| `tasks_lists` | Lists task lists with their ids | todo `get_lists` |
-| `tasks_list` | Lists the tasks in one list | todo `get_tasks` |
-| `tasks_due_today` | Finds open tasks due today in the lists set in `[tasks]`. Takes no arguments. Only appears when `due_today` is set | todo `get_tasks_due_today` |
-| `tasks_add` | Adds a task | todo `create_task` |
-| `tasks_update` | Changes a task | todo `update_task` |
-| `tasks_complete` | Marks a task as completed | todo `complete_task` |
+| `tasks_get_lists` | Lists task lists with their ids | todo `get_lists` |
+| `tasks_get_tasks` | Lists the tasks in one list | todo `get_tasks` |
+| `tasks_get_due_today` | Finds open tasks due today in the main lists set by `due_today` in `[tasks]`. Takes no arguments. Only appears when `due_today` is set | todo `get_tasks_due_today` |
+| `tasks_get_completed_between` | Finds tasks completed between two dates. Defaults to the main lists when `due_today` is set; otherwise `list_ids` is required | todo `get_tasks_by_completed_date_range` |
+| `tasks_add_task` | Adds a task | todo `create_task` |
+| `tasks_update_task` | Changes a task | todo `update_task` |
+| `tasks_complete_task` | Marks a task as completed | todo `complete_task` |
+| `tasks_get_steps` | Lists a task's steps | todo `get_steps` |
+| `tasks_add_step` | Adds a step to a task | todo `create_step` |
+| `tasks_update_step` | Renames a step, or checks or unchecks it | todo `update_step` |
+| `tasks_complete_step` | Checks a step off | todo `complete_step` |
 | `bookmarks_list` | Lists bookmarks, filtered by tag and date. There is no keyword search | pinboard `get_bookmarks` |
 | `bookmarks_add` | Saves a new bookmark, and fails if the URL is already saved. The server instructions tell Claude to mark bookmarks private unless you ask otherwise, but the backend's own default is public | pinboard `add_bookmark` |
 | `bookmarks_update` | Changes a bookmark, found by its URL | pinboard `update_bookmark` |
@@ -30,7 +35,7 @@ Claude doesn't see the backends. It sees one server called `claudeplay` with a s
 | `pc_shell` | Runs a PowerShell command | windows `PowerShell` |
 | `web_fetch` | Gets a page's text. Headless by default, which works while locked but can't run JavaScript. With `use_dom`, reads the front tab of an open browser instead, which needs the laptop unlocked | windows `Scrape` |
 
-The `[tasks]` section of `config.toml` holds your account's lists. `common_lists` maps list names to ids, which are added to the `tasks_lists` description so Claude can often skip that call. `due_today` names which of them `tasks_due_today` covers. They live in the config, not the repo, because they're specific to your account. To find an id, call `tasks_lists`.
+The `[tasks]` section of `config.toml` holds your account's lists. `common_lists` maps list names to ids, which are added to the `tasks_get_lists` description so Claude can often skip that call. `due_today` names which of them `tasks_get_due_today` covers. They live in the config, not the repo, because they're specific to your account. To find an id, call `tasks_get_lists`.
 
 claudeplay enforces the project and wiki limits, in `PathGuard` in `toolkit.py`, because obsidian-mcp only offers general `read_file` and `write_file` tools. `projects_read` and `projects_write` refuse any path outside a project, `projects_write` also refuses a project that doesn't exist yet, and `wiki_read` refuses any path outside the wiki. The check reads the path's text, so a link inside the vault could still lead elsewhere in the vault. The general tools can't be called directly. `pc_files` and `pc_shell` are separate and can still reach the whole laptop, including the vault.
 

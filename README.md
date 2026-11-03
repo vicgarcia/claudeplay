@@ -14,7 +14,7 @@ The laptop has to be on, awake and online, though a locked screen should be fine
 
 ## Tools
 
-There are 23 tools in 8 sections. A section's tools only appear while its backend is enabled and running. The date and time tool is built into claudeplay, so it's always there.
+There are 28 tools in 8 sections. A section's tools only appear while its backend is enabled and running. The date and time tool is built into claudeplay, so it's always there.
 
 ### Date and time
 
@@ -59,18 +59,23 @@ Standalone articles. Read-only. Backend: obsidian-mcp.
 
 ### Tasks
 
-Microsoft To Do lists and tasks. Backend: todo-mcp.
+Microsoft To Do lists, tasks and steps, the checklist inside a task. Backend: todo-mcp.
 
 | Tool | What it does | Arguments |
 |---|---|---|
-| `tasks_lists` | Lists the task lists, with their ids | None |
-| `tasks_list` | Lists the tasks in one list, open tasks by default | `list_id`, `status`, `limit` |
-| `tasks_due_today` | Finds open tasks due today in your main lists. Leaves out overdue tasks | None |
-| `tasks_add` | Adds a task, optionally with a due date, notes, importance or recurrence | `title`, `list_id`, `due_date`, `body_text`, `importance`, `recurrence_type`, `recurrence_interval`, `recurrence_days_of_week`, `recurrence_day_of_month` |
-| `tasks_update` | Changes a task, or removes its due date or notes. Only the arguments given change | `task_id`, `list_id`, `title`, `due_date`, `clear_due_date`, `body_text`, `importance`, `status`, `recurrence_type`, `recurrence_interval`, `recurrence_days_of_week`, `recurrence_day_of_month`, `remove_recurrence` |
-| `tasks_complete` | Marks a task as completed | `task_id`, `list_id` |
+| `tasks_get_lists` | Lists the task lists, with their ids | None |
+| `tasks_get_tasks` | Lists the tasks in one list, open tasks by default. Doesn't include steps | `list_id`, `status`, `limit` |
+| `tasks_get_due_today` | Finds open tasks due today in your main lists. Leaves out overdue tasks | None |
+| `tasks_get_completed_between` | Finds tasks completed between two dates, grouped by list and day. Checks your main lists unless given others | `start_date`, `end_date`, `list_ids` |
+| `tasks_add_task` | Adds a task, optionally with a due date, notes, importance or recurrence | `title`, `list_id`, `due_date`, `body_text`, `importance`, `recurrence_type`, `recurrence_interval`, `recurrence_days_of_week`, `recurrence_day_of_month` |
+| `tasks_update_task` | Changes a task, or removes its due date or notes. Only the arguments given change | `task_id`, `list_id`, `title`, `due_date`, `clear_due_date`, `body_text`, `importance`, `status`, `recurrence_type`, `recurrence_interval`, `recurrence_days_of_week`, `recurrence_day_of_month`, `remove_recurrence` |
+| `tasks_complete_task` | Marks a task as completed | `task_id`, `list_id` |
+| `tasks_get_steps` | Lists a task's steps, and whether each is checked off | `task_id`, `list_id` |
+| `tasks_add_step` | Adds a step to the end of a task | `task_id`, `list_id`, `name` |
+| `tasks_update_step` | Renames a step, or checks or unchecks it | `item_id`, `task_id`, `list_id`, `name`, `is_checked` |
+| `tasks_complete_step` | Checks a step off | `item_id`, `task_id`, `list_id` |
 
-The `[tasks]` section of your config sets the main lists. `tasks_due_today` only appears when `due_today` is set, and ids in `common_lists` are added to the `tasks_lists` description so Claude can often skip that call.
+The `[tasks]` section of your config sets the main lists, with `due_today`. `tasks_get_due_today` only appears when it's set, and `tasks_get_completed_between` uses it as its default. Ids in `common_lists` are added to the `tasks_get_lists` description so Claude can often skip that call. There are no tools for deleting tasks, steps or lists.
 
 ### Bookmarks
 
