@@ -7,22 +7,15 @@ from fastmcp import FastMCP
 NAME = 'clock'
 
 
-def get_todays_date() -> dict:
-    ''' today's date in this machine's time zone '''
-    now = datetime.now()
+def get_current_timestamp() -> dict:
+    ''' today's date in every form, and the current time to the second with this machine's offset from utc '''
+    now = datetime.now().astimezone()
     return {
         'date': now.strftime('%Y-%m-%d'),
         'day_of_week': now.strftime('%A'),
         'month': now.strftime('%B'),
         'day': now.day,
         'year': now.year,
-    }
-
-
-def get_current_timestamp() -> dict:
-    ''' the current time to the second, with this machine's offset from utc '''
-    now = datetime.now().astimezone()
-    return {
         'timestamp': now.isoformat(timespec='seconds'),
         'timezone': now.tzname(),
     }
@@ -30,6 +23,5 @@ def get_current_timestamp() -> dict:
 
 def server() -> FastMCP:
     clock = FastMCP(NAME)
-    clock.tool(get_todays_date)
     clock.tool(get_current_timestamp)
     return clock

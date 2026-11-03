@@ -6,8 +6,7 @@ Claude doesn't see the backends. It sees one server called `claudeplay` with a s
 
 | Tool | What it does | Backend tool |
 |---|---|---|
-| `get_todays_date` | Today's date, day of the week, month, day and year, in the laptop's time zone | built into claudeplay |
-| `get_current_timestamp` | The current time to the second, with the UTC offset and time zone name | built into claudeplay |
+| `get_current_timestamp` | Today's date, day of the week, month, day and year, and the current time to the second with the UTC offset and time zone name, in the laptop's time zone | built into claudeplay |
 | `journal_list_month` | Which days in a month have an entry | obsidian `list_journal_entries_by_year_and_month` |
 | `journal_read` | Reads one day's entry | obsidian `read_journal_entry` |
 | `journal_append` | Adds a note to the end of today's entry | obsidian `append_to_todays_journal` |

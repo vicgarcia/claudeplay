@@ -14,16 +14,15 @@ The laptop has to be on, awake and online, though a locked screen should be fine
 
 ## Tools
 
-There are 24 tools in 8 sections. A section's tools only appear while its backend is enabled and running. The date and time tools are built into claudeplay, so they're always there.
+There are 23 tools in 8 sections. A section's tools only appear while its backend is enabled and running. The date and time tool is built into claudeplay, so it's always there.
 
 ### Date and time
 
-Both follow the laptop's clock and time zone, which may differ from where you are.
+It follows the laptop's clock and time zone, which may differ from where you are.
 
 | Tool | What it does | Arguments |
 |---|---|---|
-| `get_todays_date` | Today's date as `YYYY-MM-DD`, plus the day of the week, month, day and year | None |
-| `get_current_timestamp` | The current time to the second, with the UTC offset and time zone name | None |
+| `get_current_timestamp` | Today's date as `YYYY-MM-DD`, plus the day of the week, month, day and year, and the current time to the second with the UTC offset and time zone name | None |
 
 ### Journal
 

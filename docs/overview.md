@@ -40,7 +40,7 @@ obsidian-mcp  todo-mcp  pinboard-mcp  windows-mcp  --+
 
 | Area | Tools |
 |---|---|
-| Date and time | `get_todays_date`, `get_current_timestamp` |
+| Date and time | `get_current_timestamp` |
 | Journal | `journal_list_month`, `journal_read`, `journal_append` |
 | Projects | `projects_list`, `projects_files`, `projects_create`, `projects_read`, `projects_write` |
 | Wiki | `wiki_list`, `wiki_read` |
