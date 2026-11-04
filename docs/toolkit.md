@@ -33,9 +33,11 @@ Claude doesn't see the backends. It sees one server called `claudeplay` with a s
 | `bookmarks_update` | Changes a bookmark, found by its URL | pinboard `update_bookmark` |
 | `pc_files` | Reads, writes, copies, moves, deletes, lists, searches or gets info on files. Use absolute paths | windows `FileSystem` |
 | `pc_shell` | Runs a PowerShell command | windows `PowerShell` |
-| `web_fetch` | Gets a page's text. Headless by default, which works while locked but can't run JavaScript. With `use_dom`, reads the front tab of an open browser instead, which needs the laptop unlocked | windows `Scrape` |
+| `web_fetch` | Gets a page's title and visible text, after its JavaScript runs, in headless Edge. Works while locked. Signed in only on the sites in `signed_in_sites` | built into claudeplay |
 
 The `[tasks]` section of `config.toml` holds your account's lists. `common_lists` maps list names to ids, which are added to the `tasks_get_lists` description so Claude can often skip that call. `due_today` names which of them `tasks_get_due_today` covers. They live in the config, not the repo, because they're specific to your account. To find an id, call `tasks_get_lists`.
+
+The `[browser]` section picks the browser `web_fetch` runs (`msedge` by default, which every Windows laptop has, or `chrome` or `chromium`) and lists `signed_in_sites`. A listed site, or any subdomain of it, is fetched with a signed-in profile kept in `%LOCALAPPDATA%\claudeplay\browser`. Everything else gets a fresh browser with no accounts. The sites are added to the `web_fetch` description, so Claude knows which pages it can read signed in. The code is in [browser.py](../src/claudeplay/browser.py).
 
 claudeplay enforces the project and wiki limits, in `PathGuard` in `toolkit.py`, because obsidian-mcp only offers general `read_file` and `write_file` tools. `projects_read` and `projects_write` refuse any path outside a project, `projects_write` also refuses a project that doesn't exist yet, and `wiki_read` refuses any path outside the wiki. The check reads the path's text, so a link inside the vault could still lead elsewhere in the vault. The general tools can't be called directly. `pc_files` and `pc_shell` are separate and can still reach the whole laptop, including the vault.
 

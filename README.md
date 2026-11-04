@@ -14,7 +14,7 @@ The laptop has to be on, awake and online, though a locked screen should be fine
 
 ## Tools
 
-There are 28 tools in 8 sections. A section's tools only appear while its backend is enabled and running. The date and time tool is built into claudeplay, so it's always there.
+There are 28 tools in 8 sections. A section's tools only appear while its backend is enabled and running. The date and time tool and `web_fetch` are built into claudeplay, so they're always there.
 
 ### Date and time
 
@@ -102,13 +102,15 @@ These two can reach the whole laptop, including the vault, so the project and wi
 
 ### Web
 
-Backend: windows-mcp.
+Built into claudeplay, using Playwright and the laptop's Edge.
 
 | Tool | What it does | Arguments |
 |---|---|---|
-| `web_fetch` | Gets the full text of a web page | `url`, `use_dom` |
+| `web_fetch` | Gets the title and visible text of a web page, after its JavaScript runs | `url` |
 
-Headless is the default. It works while the laptop is locked, but pages that need JavaScript come back mostly empty and some sites block it. With `use_dom`, it reads the front tab of the laptop's browser instead, which handles JavaScript and logged-in pages, but the page must already be open and the laptop unlocked.
+It loads the page in a headless browser, so it works while the laptop is locked. Each fetch takes a few seconds, and some sites block it. The text is cut off at 100,000 characters.
+
+Most sites get a fresh browser with no accounts. Sites listed in `signed_in_sites` under `[browser]` get a separate profile instead, which you sign in to by hand with `claudeplay browser login`. That profile is never used for any other site. See [Security](docs/security.md#web_fetch-is-signed-in-to-the-sites-you-list).
 
 ## Documentation
 
@@ -128,6 +130,7 @@ uv tool install --editable .              # install
 python -m claudeplay check                # show the config, secrets masked
 python -m claudeplay status               # show what's running
 python -m claudeplay install              # start the tray at logon
+python -m claudeplay browser login <url>  # sign web_fetch in to a site
 uv run --extra test python -m pytest      # run the tests
 ```
 

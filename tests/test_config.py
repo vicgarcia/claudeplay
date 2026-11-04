@@ -179,3 +179,23 @@ def test_tasks_section_is_parsed_and_checked():
     assert config.parse('').tasks == config.TasksConfig()
     with pytest.raises(config.ConfigError, match='Health'):
         config.parse("[tasks]\ndue_today = ['Health']\n[tasks.common_lists]\nChores = 'id-1'\n")
+
+
+def test_browser_section_defaults_to_edge_signed_in_nowhere():
+    assert config.parse('').browser == config.BrowserConfig(channel='msedge', signed_in_sites=())
+    cfg = config.parse("[browser]\nchannel = 'chrome'\nsigned_in_sites = [' GitHub.com ', 'reddit.com']\n")
+    assert cfg.browser == config.BrowserConfig(channel='chrome', signed_in_sites=('github.com', 'reddit.com'))
+    assert 'browser:  chrome; signed in on github.com, reddit.com' in config.describe(cfg)
+
+
+@pytest.mark.parametrize('text', [
+    "[browser]\nchannel = 'firefox'",
+    "[browser]\nsigned_in_sites = 'github.com'",
+    "[browser]\nsigned_in_sites = ['https://github.com']",
+    "[browser]\nsigned_in_sites = ['github.com/login']",
+    "[browser]\nsigned_in_sites = ['*.github.com']",
+    "[browser]\nsigned_in_sites = ['']",
+])
+def test_browser_section_takes_known_channels_and_bare_hostnames(text):
+    with pytest.raises(config.ConfigError, match='browser'):
+        config.parse(text)

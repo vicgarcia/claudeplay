@@ -10,7 +10,9 @@ from claudeplay import config, gateway, toolkit
 
 FAKE_OBSIDIAN = str(Path(__file__).parent / 'fake_obsidian.py')
 EXPECTED = ['get_current_timestamp', 'journal_list_month', 'journal_read', 'journal_append', 'projects_list', 'projects_files',
-            'projects_create', 'projects_read', 'projects_write', 'wiki_list', 'wiki_read']
+            'projects_create', 'projects_read', 'projects_write', 'wiki_list', 'wiki_read', 'web_fetch']
+# the tools built into the gateway, there with no backends at all
+BUILT_IN = ['get_current_timestamp', 'web_fetch']
 
 
 def obsidian() -> config.ServerConfig:
@@ -44,7 +46,7 @@ def test_descriptions_annotations_and_argument_docs_come_from_the_catalog():
         return {t.name: t for t in await client.list_tools()}
 
     tools = run(config.GatewayConfig(servers=(obsidian(),)), steps)
-    entries = {e.name: e for e in toolkit.CATALOG}
+    entries = {e.name: e for e in toolkit.catalog(config.TasksConfig())}
     for name, tool in tools.items():
         assert tool.description == entries[name].description
         assert tool.annotations.read_only_hint is entries[name].read_only
@@ -73,7 +75,7 @@ def test_clock_tool_works_with_no_backends_and_does_not_use_obsidian():
         return names, stamp
 
     names, stamp = run(config.GatewayConfig(servers=()), steps)
-    assert names == ['get_current_timestamp']
+    assert names == BUILT_IN
     assert set(stamp) == {'date', 'day_of_week', 'month', 'day', 'year', 'timestamp', 'timezone'}
     assert stamp['timestamp'].startswith(stamp['date'])
 
@@ -175,7 +177,7 @@ def test_disabled_backend_simply_removes_its_tools():
     async def steps(client):
         return [t.name for t in await client.list_tools()]
 
-    assert run(config.GatewayConfig(servers=(off,)), steps) == ['get_current_timestamp']
+    assert run(config.GatewayConfig(servers=(off,)), steps) == BUILT_IN
 
 
 def test_catalog_rejects_duplicate_names():
@@ -280,10 +282,25 @@ def test_instructions_cover_the_common_workflows():
     assert 'bookmarks' in workflows
 
 
-def test_web_fetch_always_returns_the_page_and_offers_only_url_and_mode():
-    entry = next(e for e in toolkit.CATALOG if e.name == 'web_fetch')
-    assert entry.fixed == {'use_sampling': False} and entry.hide == ('query',)
-    assert set(entry.args) == {'url', 'use_dom'}
+def test_web_fetch_is_the_built_in_browser_and_takes_only_a_url():
+    async def steps(client):
+        return next(t for t in await client.list_tools() if t.name == 'web_fetch')
+
+    tool = run(config.GatewayConfig(servers=()), steps)
+    assert list(tool.input_schema['properties']) == ['url']
+    assert tool.annotations.read_only_hint is True and tool.annotations.open_world_hint is True
+    assert 'not signed in to any site' in tool.description
+
+
+def test_web_fetch_names_its_signed_in_sites():
+    cfg = config.GatewayConfig(servers=(), browser=config.BrowserConfig(signed_in_sites=('github.com', 'reddit.com')))
+
+    async def steps(client):
+        return next(t for t in await client.list_tools() if t.name == 'web_fetch')
+
+    description = run(cfg, steps).description
+    assert 'these sites only: github.com, reddit.com' in description
+    assert 'not signed in' not in description
 
 
 def test_a_changed_default_is_visible_sent_and_can_be_overridden():

@@ -16,7 +16,7 @@ from fastmcp.client.transports import StdioTransport
 from fastmcp.server import create_proxy
 from fastmcp.server.middleware import Middleware, MiddlewareContext
 
-from . import clock, config, toolkit
+from . import browser, clock, config, toolkit
 
 log = logging.getLogger('claudeplay.gateway')
 
@@ -179,8 +179,9 @@ def build(
         middleware=[*extra_middleware, ToolLogMiddleware()],
     )
     if not raw:
-        gw.add_transform(toolkit.Catalog(toolkit.catalog(cfg.tasks)))
+        gw.add_transform(toolkit.Catalog(toolkit.catalog(cfg.tasks, cfg.browser)))
         gw.add_provider(clock.server(), namespace=clock.NAME)
+        gw.add_provider(browser.server(cfg.browser), namespace=browser.NAME)
 
     for server in cfg.servers:
         if not server.enabled:

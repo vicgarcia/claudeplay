@@ -104,6 +104,16 @@ class TasksConfig:
     due_today: tuple[str, ...] = ()
 
 
+BROWSER_CHANNELS = ('msedge', 'chrome', 'chromium')
+
+
+@dataclass(frozen=True)
+class BrowserConfig:
+    ''' the browser web_fetch runs: an installed one by channel, and the sites it uses the signed-in profile for '''
+    channel: str = 'msedge'
+    signed_in_sites: tuple[str, ...] = ()
+
+
 @dataclass(frozen=True)
 class GatewayConfig:
     host: str = DEFAULT_HOST
@@ -113,6 +123,7 @@ class GatewayConfig:
     auth: AuthConfig | None = None
     tunnel: TunnelConfig | None = None
     tasks: TasksConfig = field(default_factory=TasksConfig)
+    browser: BrowserConfig = field(default_factory=BrowserConfig)
     # local use only: serve without authentication when there is no [auth] section
     insecure_no_auth: bool = False
 
@@ -201,6 +212,21 @@ def _parse_tasks(raw: dict) -> TasksConfig:
     return TasksConfig(common_lists=dict(lists), due_today=tuple(due_today))
 
 
+def _parse_browser(raw: dict) -> BrowserConfig:
+    channel = raw.get('channel', 'msedge')
+    if channel not in BROWSER_CHANNELS:
+        raise ConfigError(f'browser: channel must be one of {", ".join(BROWSER_CHANNELS)}')
+    sites = raw.get('signed_in_sites', [])
+    if not isinstance(sites, list) or not all(isinstance(s, str) for s in sites):
+        raise ConfigError('browser: signed_in_sites must be a list of site names')
+    sites = [s.strip().casefold() for s in sites]
+    # bare hostnames only, so a site can't be given as a url that matches more than it seems to
+    bad = [s for s in sites if not s or any(c in s for c in '/:*@ ')]
+    if bad:
+        raise ConfigError(f'browser: signed_in_sites takes hostnames such as "github.com", not: {", ".join(bad)}')
+    return BrowserConfig(channel=channel, signed_in_sites=tuple(sites))
+
+
 def parse(text: str) -> GatewayConfig:
     try:
         raw = tomllib.loads(text)
@@ -232,6 +258,7 @@ def parse(text: str) -> GatewayConfig:
         auth=auth,
         tunnel=tunnel,
         tasks=_parse_tasks(raw.get('tasks', {})),
+        browser=_parse_browser(raw.get('browser', {})),
     )
 
 
@@ -302,6 +329,7 @@ def describe(cfg: GatewayConfig) -> list[str]:
         lines.append(f'tunnel:   {cfg.tunnel.name} {"enabled" if cfg.tunnel.enabled else "disabled"}, {cfg.tunnel.command}')
     if cfg.tasks.common_lists:
         lines.append(f'tasks:    common lists {", ".join(cfg.tasks.common_lists)}; due today {", ".join(cfg.tasks.due_today) or "(off)"}')
+    lines.append(f'browser:  {cfg.browser.channel}; signed in on {", ".join(cfg.browser.signed_in_sites) or "no sites"}')
     for s in cfg.servers:
         lines.append(f'server {s.name}: {"enabled" if s.enabled else "disabled"}')
         lines.append(f'  command {s.command}')
