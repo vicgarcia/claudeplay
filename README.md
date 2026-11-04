@@ -108,9 +108,7 @@ Built into claudeplay, using Playwright and the laptop's Edge.
 |---|---|---|
 | `web_fetch` | Gets the title and visible text of a web page, after its JavaScript runs | `url` |
 
-It loads the page in a headless browser, so it works while the laptop is locked. Each fetch takes a few seconds, and some sites block it. The text is cut off at 100,000 characters.
-
-Most sites get a fresh browser with no accounts. Sites listed in `signed_in_sites` under `[browser]` get a separate profile instead, which you sign in to by hand with `claudeplay browser login`. That profile is never used for any other site. See [Security](docs/security.md#web_fetch-is-signed-in-to-the-sites-you-list).
+It loads the page in a fresh headless browser that isn't signed in to anything, so it works while the laptop is locked and pages behind a login come back as the login page. Each fetch takes a few seconds, and some sites block it. The text is cut off at 100,000 characters.
 
 ## Documentation
 
@@ -129,9 +127,7 @@ Most sites get a fresh browser with no accounts. Sites listed in `signed_in_site
 uv tool install --editable .              # install
 python -m claudeplay check                # show the config, secrets masked
 python -m claudeplay status               # show what's running
-python -m claudeplay install              # start the tray at logon
-python -m claudeplay browser login <url>  # sign web_fetch in to a site
-uv run --extra test python -m pytest      # run the tests
+python -m claudeplay install              # start the tray at logonuv run --extra test python -m pytest      # run the tests
 ```
 
 The config and all secrets live in `%LOCALAPPDATA%\claudeplay\config.toml`, outside this repo. Start from [config.example.toml](config.example.toml).

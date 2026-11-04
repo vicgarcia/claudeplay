@@ -1,4 +1,4 @@
-'''command line: claudeplay serve | tray | install | uninstall | status | check | genkey | browser login | browser clear'''
+'''command line: claudeplay serve | tray | install | uninstall | status | check | genkey'''
 
 import argparse
 import logging
@@ -101,24 +101,6 @@ def cmd_status(_args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_browser_login(args: argparse.Namespace) -> int:
-    ''' open web_fetch's signed-in profile in a window to sign in to sites by hand '''
-    from . import browser
-    cfg = _load(args.config)
-    if not cfg.browser.signed_in_sites:
-        print('note: no signed_in_sites under [browser] in the config, so web_fetch will not use these sign-ins yet')
-    print(f'signing in with {cfg.browser.channel}; close the window when done')
-    browser.login(cfg.browser, args.url)
-    return 0
-
-
-def cmd_browser_clear(_args: argparse.Namespace) -> int:
-    ''' delete the signed-in profile, signing web_fetch out of every site '''
-    from . import browser
-    print('signed out of every site' if browser.clear() else 'no signed-in profile')
-    return 0
-
-
 def cmd_genkey(_args: argparse.Namespace) -> int:
     ''' print a random value suitable for CLAUDEPLAY_JWT_KEY '''
     print(secrets.token_urlsafe(48))
@@ -149,13 +131,6 @@ def build_parser() -> argparse.ArgumentParser:
     check.set_defaults(func=cmd_check)
     genkey = sub.add_parser('genkey', help='print a random signing key')
     genkey.set_defaults(func=cmd_genkey)
-
-    browser = sub.add_parser('browser', help="manage web_fetch's signed-in browser profile")
-    browser_sub = browser.add_subparsers(dest='browser_command', required=True)
-    login = browser_sub.add_parser('login', help='open the profile in a window to sign in to sites by hand')
-    login.add_argument('url', nargs='?', help='a page to open first, such as the sign-in page')
-    login.set_defaults(func=cmd_browser_login)
-    browser_sub.add_parser('clear', help='delete the profile, signing out of every site').set_defaults(func=cmd_browser_clear)
     return parser
 
 

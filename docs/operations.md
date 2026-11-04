@@ -34,10 +34,6 @@ Run these as `claudeplay <command>`, or `python -m claudeplay <command>` if Smar
 | `check` | Shows the config with secrets masked |
 | `install` / `uninstall` | Adds or removes the shortcut that starts the tray at logon |
 | `genkey` | Prints a random signing key |
-| `browser login [url]` | Opens `web_fetch`'s signed-in profile in a window, at `url` if given. Sign in to the sites in `signed_in_sites`, then close the window. Run it again when a site signs you out |
-| `browser clear` | Deletes the signed-in profile, signing `web_fetch` out of every site |
-
-Sign-ins that would normally end when the browser closes are kept for 30 days, because each fetch starts a new browser. A site can still end them sooner on its side.
 
 `--config <path>` goes before the command, as in `claudeplay --config test.toml serve`.
 

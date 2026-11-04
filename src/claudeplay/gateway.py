@@ -179,7 +179,7 @@ def build(
         middleware=[*extra_middleware, ToolLogMiddleware()],
     )
     if not raw:
-        gw.add_transform(toolkit.Catalog(toolkit.catalog(cfg.tasks, cfg.browser)))
+        gw.add_transform(toolkit.Catalog(toolkit.catalog(cfg.tasks)))
         gw.add_provider(clock.server(), namespace=clock.NAME)
         gw.add_provider(browser.server(cfg.browser), namespace=browser.NAME)
 

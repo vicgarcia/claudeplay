@@ -45,18 +45,9 @@ They run as your user, with no folder or command limits. They can read `config.t
 
 To reduce the risk, either keep approval prompts on for `pc_shell` in your connector settings or leave `web_fetch` out of the catalog. Removing either tool breaks the path from a web page to your shell.
 
-### `web_fetch` is signed in to the sites you list
+### `web_fetch` runs pages in a real browser
 
-Sites in `signed_in_sites` are fetched with a browser profile you've signed in to, so anyone who gets into the connector, or a page that talks Claude into it, can read what you can read on those sites. Limits on that:
-
-- Only the listed sites, and their subdomains, use the profile. Every other site gets a fresh browser with no accounts, so a page you didn't list never sees your cookies.
-- `web_fetch` only reads. It never clicks, types or submits, so it can't post or buy anything as you.
-- Only `http` and `https` addresses load, so it can't read files on the laptop.
-- The profile lives in `%LOCALAPPDATA%\claudeplay\browser`, apart from your everyday browser. Its cookies are encrypted under your Windows account, like any browser's.
-
-A listed page can still load images and scripts from other sites, and those carry any cookies the profile holds for them. Sign in only to the sites you list.
-
-Leave email, banking and other high-stakes accounts out. `claudeplay browser clear` deletes the profile and signs out of everything.
+Pages run their JavaScript in headless Edge on the laptop. Each fetch gets a fresh browser that isn't signed in to anything and is thrown away afterwards, and `web_fetch` only reads: it never clicks, types or submits. Only `http` and `https` addresses load, so it can't read files on the laptop, but it can reach anything the laptop can, including your home network.
 
 ## Who can see your data
 

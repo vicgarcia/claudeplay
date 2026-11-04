@@ -12,7 +12,7 @@ from fastmcp.tools import Tool
 from fastmcp.tools.tool_transform import ArgTransform, forward
 from mcp.types import ToolAnnotations
 
-from .config import BrowserConfig, TasksConfig
+from .config import TasksConfig
 
 NAME = 'claudeplay'
 
@@ -201,7 +201,7 @@ CATALOG: tuple[Entry, ...] = (
     Entry(
         name='web_fetch',
         source='browser_fetch_page',
-        description="Get the title and visible text of a web page, loaded in a headless browser on the user's laptop after its javascript runs. Works while the laptop is locked. Some sites block it. Text is cut off at 100,000 characters; truncated says when.",
+        description="Get the title and visible text of a web page, loaded in a headless browser on the user's laptop after its javascript runs. Works while the laptop is locked. Some sites block it. It is not signed in to any site, so pages behind a login come back as the login page. Text is cut off at 100,000 characters; truncated says when.",
         read_only=True,
         args={'url': 'the full URL, including https://'},
         open_world=True,
@@ -411,20 +411,10 @@ def _tasks_due_today(tasks: TasksConfig) -> Entry:
     )
 
 
-def _web_fetch_sites(entry: Entry, browser: BrowserConfig) -> str:
-    if not browser.signed_in_sites:
-        return f'{entry.description} It is not signed in to any site, so pages behind a login come back as the login page.'
-    sites = ', '.join(browser.signed_in_sites)
-    return (f"{entry.description} It is signed in to the user's accounts on these sites only: {sites}. "
-            'Other sites get a fresh browser with no accounts. signed_in in the result says which was used.')
-
-
-def catalog(tasks: TasksConfig, browser: BrowserConfig = BrowserConfig()) -> tuple[Entry, ...]:
-    ''' CATALOG with the account's task lists and signed-in sites worked in '''
+def catalog(tasks: TasksConfig) -> tuple[Entry, ...]:
+    ''' CATALOG with the account's task lists worked in '''
     entries = []
     for entry in CATALOG:
-        if entry.name == 'web_fetch':
-            entry = replace(entry, description=_web_fetch_sites(entry, browser))
         if entry.name == 'tasks_get_lists' and tasks.common_lists:
             entry = replace(entry, description=_tasks_lists_description(entry, tasks))
         if entry.name == 'tasks_get_completed_between' and tasks.due_today:

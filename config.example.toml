@@ -61,12 +61,9 @@ TODO_REFRESH_TOKEN = ''
 # Chores = '<list id>'
 # Grocery = '<list id>'
 
-# web_fetch's browser. leave this out for edge, signed in nowhere.
+# web_fetch's browser. leave this out for edge.
 # [browser]
 # channel = 'msedge'   # or 'chrome', or 'chromium' after `playwright install chromium`
-# sites fetched with the signed-in profile, and their subdomains; sign in with `claudeplay browser login <url>`.
-# keep email and banking out: anyone who gets into the connector can read these sites as you.
-# signed_in_sites = ['github.com']
 
 [servers.pinboard]
 # python.exe, not pinboard-mcp.exe: smart app control blocks the uv launcher stub

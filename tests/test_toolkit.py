@@ -46,7 +46,7 @@ def test_descriptions_annotations_and_argument_docs_come_from_the_catalog():
         return {t.name: t for t in await client.list_tools()}
 
     tools = run(config.GatewayConfig(servers=(obsidian(),)), steps)
-    entries = {e.name: e for e in toolkit.catalog(config.TasksConfig())}
+    entries = {e.name: e for e in toolkit.CATALOG}
     for name, tool in tools.items():
         assert tool.description == entries[name].description
         assert tool.annotations.read_only_hint is entries[name].read_only
@@ -290,17 +290,6 @@ def test_web_fetch_is_the_built_in_browser_and_takes_only_a_url():
     assert list(tool.input_schema['properties']) == ['url']
     assert tool.annotations.read_only_hint is True and tool.annotations.open_world_hint is True
     assert 'not signed in to any site' in tool.description
-
-
-def test_web_fetch_names_its_signed_in_sites():
-    cfg = config.GatewayConfig(servers=(), browser=config.BrowserConfig(signed_in_sites=('github.com', 'reddit.com')))
-
-    async def steps(client):
-        return next(t for t in await client.list_tools() if t.name == 'web_fetch')
-
-    description = run(cfg, steps).description
-    assert 'these sites only: github.com, reddit.com' in description
-    assert 'not signed in' not in description
 
 
 def test_a_changed_default_is_visible_sent_and_can_be_overridden():
