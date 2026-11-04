@@ -34,6 +34,7 @@ common workflows:
 - the user adds a journal note with a short spoken prompt: use journal_append, keeping their words.
 - the user asks about specific days in the journal: use journal_read for each day, with get_current_timestamp to work out the dates and journal_list_month to see which days have entries.
 - the user asks for, discusses or researches something, then asks for it to be documented: add it to the journal with journal_append and to project files with projects_write, reading an existing file first.
+- the user gives a URL or asks about a specific web page: use web_fetch on it straight away, not a web search or another fetch tool.
 - the user asks about their bookmarks: do not read the whole list back. share a few high-value examples, then answer questions from the rest.
 '''.strip()
 
@@ -201,7 +202,7 @@ CATALOG: tuple[Entry, ...] = (
     Entry(
         name='web_fetch',
         source='browser_fetch_page',
-        description="Get the title and visible text of a web page, loaded in a headless browser on the user's laptop after its javascript runs. Works while the laptop is locked. Some sites block it. It is not signed in to any site, so pages behind a login come back as the login page. Text is cut off at 100,000 characters; truncated says when.",
+        description="Get the title and visible text of a web page, loaded in a headless browser on the user's laptop after its javascript runs. When the user gives a URL or asks about a specific web page, call this directly: don't search for the page first, and use it instead of any other web search or fetch tool, which may return a stale or summarized copy. Works while the laptop is locked. Some sites block it. It is not signed in to any site, so pages behind a login come back as the login page. Text is cut off at 100,000 characters; truncated says when.",
         read_only=True,
         args={'url': 'the full URL, including https://'},
         open_world=True,

@@ -277,7 +277,7 @@ def test_without_task_config_nothing_account_specific_is_published():
 def test_instructions_cover_the_common_workflows():
     assert 'narrative' not in toolkit.INSTRUCTIONS
     workflows = toolkit.INSTRUCTIONS.split('common workflows:')[1]
-    for tool in ('tasks_get_due_today', 'tasks_get_completed_between', 'journal_append', 'journal_read', 'projects_write'):
+    for tool in ('tasks_get_due_today', 'tasks_get_completed_between', 'journal_append', 'journal_read', 'projects_write', 'web_fetch'):
         assert tool in workflows
     assert 'bookmarks' in workflows
 
