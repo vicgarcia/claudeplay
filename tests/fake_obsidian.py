@@ -14,8 +14,9 @@ TODAY = '2026-10-29'
 
 
 @mcp.tool()
-def get_current_date() -> dict:
-    return {'formatted': TODAY, 'human': 'Thursday October 29, 2026'}
+def get_current_timestamp() -> dict:
+    ''' not in the catalog: claudeplay has its own clock '''
+    return {'date': TODAY}
 
 
 @mcp.tool()
@@ -30,10 +31,26 @@ def read_journal_entry(date: str) -> dict:
 
 
 @mcp.tool()
-def append_to_todays_journal(text: str) -> dict:
-    created = TODAY not in journal
-    journal[TODAY] = (journal.get(TODAY, '') + '\n\n' + text).strip()
-    return {'success': True, 'path': f'journal/{TODAY}.md', 'created': created}
+def append_to_journal_entry(text: str, date: str | None = None) -> dict:
+    day = date or TODAY
+    created = day not in journal
+    journal[day] = (journal.get(day, '') + '\n\n' + text).strip()
+    return {'success': True, 'path': f'journal/{day}.md', 'created': created}
+
+
+@mcp.tool()
+def prepend_to_journal_entry(text: str, date: str | None = None) -> dict:
+    day = date or TODAY
+    created = day not in journal
+    journal[day] = (text + '\n\n' + journal.get(day, '')).strip()
+    return {'success': True, 'path': f'journal/{day}.md', 'created': created}
+
+
+@mcp.tool()
+def write_journal_entry(content: str, date: str | None = None) -> dict:
+    ''' not in the catalog: overwrites a whole entry '''
+    journal[date or TODAY] = content
+    return {'success': True}
 
 
 @mcp.tool()

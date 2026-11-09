@@ -124,5 +124,5 @@ Cloudflare reaches the gateway over plain HTTP, which has two consequences:
 ## Known gaps
 
 - A crashed gateway doesn't restart by itself.
-- `projects_read` and `wiki_read` have no size limit on their results. `web_fetch` stops at 100,000 characters.
+- `projects_read` and `wiki_read` have no size limit on their results. `web_fetch` returns 100,000 characters at a time and reads longer pages in parts, loading the page again for each part.
 - Tool names aren't checked against the catalog at startup, so a renamed backend tool just disappears from Claude's list.

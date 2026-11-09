@@ -20,7 +20,7 @@ _TASKS_LINE = "the tasks tools work on the user's task lists. tasks_get_lists re
 
 INSTRUCTIONS = f'''
 claudeplay is a personal productivity toolkit over the user's own data.
-the journal holds daily entries, one per day. journal tools take dates as YYYY-MM-DD; get_current_timestamp gives today's date.
+the journal holds daily entries, one per day. journal tools take dates as YYYY-MM-DD; get_current_timestamp gives today's date. call it before writing to the journal rather than relying on your own sense of the date.
 projects are folders of notes for ongoing work. projects_files gives the paths that projects_read and projects_write take.
 the wiki is a set of standalone articles. wiki_list gives the paths that wiki_read takes.
 {_TASKS_LINE}
@@ -89,7 +89,7 @@ CATALOG: tuple[Entry, ...] = (
     Entry(
         name='get_current_timestamp',
         source='clock_get_current_timestamp',
-        description="Today's date as YYYY-MM-DD, plus the day of the week, month, day and year, and the current time to the second with the UTC offset and time zone name. Use it to resolve 'today', 'yesterday' or 'last tuesday' before other date-based tools. It follows the time zone of the user's laptop, which may differ from where the user is.",
+        description="The current date and time in every common form: date as YYYY-MM-DD (the form the journal and task tools take), 24-hour and 12-hour time, day of the week, a spoken-style date such as 'Sunday November 8, 2026 at 2:32 PM', ISO 8601 local and UTC timestamps, unix seconds, ISO week, time zone name and UTC offset. Call it before other date-based tools to resolve 'today', 'yesterday' or 'last tuesday' instead of relying on your own sense of the date. It follows the time zone of the user's laptop, which may differ from where the user is.",
         read_only=True,
     ),
     Entry(
@@ -111,10 +111,23 @@ CATALOG: tuple[Entry, ...] = (
     ),
     Entry(
         name='journal_append',
-        source='obsidian_append_to_todays_journal',
-        description="Add a note to the end of today's journal entry, creating the entry if needed. Never changes what is already there.",
+        source='obsidian_append_to_journal_entry',
+        description="Add text to the end of a day's journal entry, after a blank line, creating the entry if needed. Never changes what is already there. Start the text with a ### heading to add a new entry (#### and ##### within it); text without a heading continues the last entry. This is the usual way to add to the journal.",
         read_only=False,
-        args={'text': 'the note to add, in the words the user wants recorded'},
+        args={
+            'text': 'the text to add, in the words the user wants recorded; markdown allowed',
+            'date': 'the day, as YYYY-MM-DD; leave it out for today',
+        },
+    ),
+    Entry(
+        name='journal_prepend',
+        source='obsidian_prepend_to_journal_entry',
+        description="Add text at the top of a day's journal entry, before everything else except its frontmatter, creating the entry if needed. Never changes what is already there. The text should be a complete entry starting with a ### heading (#### and ##### within it). Use it only when the user asks for something at the top; otherwise use journal_append.",
+        read_only=False,
+        args={
+            'text': 'the entry to add, starting with a ### heading; markdown allowed',
+            'date': 'the day, as YYYY-MM-DD; leave it out for today',
+        },
     ),
     Entry(
         name='projects_list',
@@ -202,9 +215,13 @@ CATALOG: tuple[Entry, ...] = (
     Entry(
         name='web_fetch',
         source='browser_fetch_page',
-        description="Get the title and visible text of a web page, loaded in a headless browser on the user's laptop after its javascript runs. When the user gives a URL or asks about a specific web page, call this directly: don't search for the page first, and use it instead of any other web search or fetch tool, which may return a stale or summarized copy. Works while the laptop is locked. Some sites block it. It is not signed in to any site, so pages behind a login come back as the login page. Text is cut off at 100,000 characters; truncated says when.",
+        description="Get the title and visible text of a web page, loaded in a headless browser on the user's laptop after its javascript runs. When the user gives a URL or asks about a specific web page, call this directly: don't search for the page first, and use it instead of any other web search or fetch tool, which may return a stale or summarized copy. Works while the laptop is locked. Some sites block it. It is not signed in to any site, so pages behind a login come back as the login page. It returns up to 100,000 characters at a time: when truncated is true, call it again with offset set to next_offset to read on. The page is loaded fresh each time, so a page that changes between calls can shift a little. Set main_only to skip menus, sidebars, headers, footers and pop-ups, for an article, post or documentation page; leave it off when you need the whole page, such as a list of search results or a home page.",
         read_only=True,
-        args={'url': 'the full URL, including https://'},
+        args={
+            'url': 'the full URL, including https://',
+            'offset': 'the character to start from, counting from 0; use next_offset from the previous call to read on',
+            'main_only': "true to return only the page's main content, without navigation, sidebars, headers, footers or pop-ups",
+        },
         open_world=True,
     ),
     Entry(

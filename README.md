@@ -14,7 +14,7 @@ The laptop has to be on, awake and online, though a locked screen should be fine
 
 ## Tools
 
-There are 28 tools in 8 sections. A section's tools only appear while its backend is enabled and running. The date and time tool and `web_fetch` are built into claudeplay, so they're always there.
+There are 29 tools in 8 sections. A section's tools only appear while its backend is enabled and running. The date and time tool and `web_fetch` are built into claudeplay, so they're always there.
 
 ### Date and time
 
@@ -22,7 +22,7 @@ It follows the laptop's clock and time zone, which may differ from where you are
 
 | Tool | What it does | Arguments |
 |---|---|---|
-| `get_current_timestamp` | Today's date as `YYYY-MM-DD`, plus the day of the week, month, day and year, and the current time to the second with the UTC offset and time zone name | None |
+| `get_current_timestamp` | The current date and time in every common form: `YYYY-MM-DD`, 24-hour and 12-hour time, day of the week, a spoken-style date, ISO 8601 local and UTC, unix seconds, ISO week, time zone name and UTC offset. The same fields as obsidian-mcp's tool of the same name | None |
 
 ### Journal
 
@@ -32,7 +32,8 @@ Daily entries in the Obsidian vault, one per day. Backend: obsidian-mcp.
 |---|---|---|
 | `journal_list_month` | Lists which days in a month have an entry | `year`, `month` |
 | `journal_read` | Reads one day's entry, and says so if there isn't one | `date` |
-| `journal_append` | Adds a note to the end of today's entry, creating it if needed. Never changes what's already there | `text` |
+| `journal_append` | Adds text to the end of a day's entry, today by default, creating it if needed. Never changes what's already there | `text`, `date` |
+| `journal_prepend` | Adds an entry at the top of a day's entry, below any frontmatter, today by default, creating it if needed. Never changes what's already there | `text`, `date` |
 
 ### Projects
 
@@ -106,9 +107,9 @@ Built into claudeplay, using Playwright and the laptop's Edge.
 
 | Tool | What it does | Arguments |
 |---|---|---|
-| `web_fetch` | Gets the title and visible text of a web page, after its JavaScript runs | `url` |
+| `web_fetch` | Gets the title and visible text of a web page, after its JavaScript runs | `url`, `offset`, `main_only` |
 
-It loads the page in a fresh headless browser that isn't signed in to anything, so it works while the laptop is locked and pages behind a login come back as the login page. Each fetch takes a few seconds, and some sites block it. The text is cut off at 100,000 characters.
+It loads the page in a fresh headless browser that isn't signed in to anything, so it works while the laptop is locked and pages behind a login come back as the login page. Each fetch takes a few seconds, and some sites block it. It returns up to 100,000 characters at a time, and Claude reads on from `next_offset` when a page is longer. `main_only` returns just the page's main content, without menus, sidebars, headers, footers and pop-ups.
 
 ## Documentation
 

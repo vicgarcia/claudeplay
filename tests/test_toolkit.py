@@ -9,7 +9,7 @@ from fastmcp import Client
 from claudeplay import config, gateway, toolkit
 
 FAKE_OBSIDIAN = str(Path(__file__).parent / 'fake_obsidian.py')
-EXPECTED = ['get_current_timestamp', 'journal_list_month', 'journal_read', 'journal_append', 'projects_list', 'projects_files',
+EXPECTED = ['get_current_timestamp', 'journal_list_month', 'journal_read', 'journal_append', 'journal_prepend', 'projects_list', 'projects_files',
             'projects_create', 'projects_read', 'projects_write', 'wiki_list', 'wiki_read', 'web_fetch']
 # the tools built into the gateway, there with no backends at all
 BUILT_IN = ['get_current_timestamp', 'web_fetch']
@@ -59,13 +59,29 @@ def test_calls_route_to_the_backend():
     async def steps(client):
         month = payload(await client.call_tool('journal_list_month', {'year': '2026', 'month': '10'}))
         appended = payload(await client.call_tool('journal_append', {'text': 'saw a heron'}))
+        prepended = payload(await client.call_tool('journal_prepend', {'text': '### morning'}))
         today = payload(await client.call_tool('journal_read', {'date': '2026-10-29'}))
-        return month, appended, today
+        await client.call_tool('journal_append', {'text': 'and a swim', 'date': '2026-10-01'})
+        await client.call_tool('journal_prepend', {'text': '### the day', 'date': '2026-10-01'})
+        earlier = payload(await client.call_tool('journal_read', {'date': '2026-10-01'}))
+        return month, appended, prepended, today, earlier
 
-    month, appended, today = run(config.GatewayConfig(servers=(obsidian(),)), steps)
+    month, appended, prepended, today, earlier = run(config.GatewayConfig(servers=(obsidian(),)), steps)
     assert [e['name'] for e in month] == ['2026-10-01.md']
-    assert appended['created'] is True
-    assert today == {'path': 'journal/2026-10-29.md', 'exists': True, 'content': 'saw a heron'}
+    assert appended['created'] is True and prepended['created'] is False
+    assert today == {'path': 'journal/2026-10-29.md', 'exists': True, 'content': '### morning\n\nsaw a heron'}
+    assert earlier['content'] == '### the day\n\nwent for a run\n\nand a swim'
+
+
+def test_journal_append_and_prepend_take_text_and_an_optional_date():
+    async def steps(client):
+        return {t.name: t for t in await client.list_tools()}
+
+    tools = run(config.GatewayConfig(servers=(obsidian(),)), steps)
+    for name in ('journal_append', 'journal_prepend'):
+        schema = tools[name].input_schema
+        assert list(schema['properties']) == ['text', 'date'] and schema['required'] == ['text']
+        assert tools[name].annotations.destructive_hint is False
 
 
 def test_clock_tool_works_with_no_backends_and_does_not_use_obsidian():
@@ -76,8 +92,9 @@ def test_clock_tool_works_with_no_backends_and_does_not_use_obsidian():
 
     names, stamp = run(config.GatewayConfig(servers=()), steps)
     assert names == BUILT_IN
-    assert set(stamp) == {'date', 'day_of_week', 'month', 'day', 'year', 'timestamp', 'timezone'}
-    assert stamp['timestamp'].startswith(stamp['date'])
+    assert set(stamp) == {'iso', 'utc', 'unix', 'date', 'time', 'time_12h', 'day_of_week', 'human_date', 'human',
+                          'iso_week', 'timezone', 'utc_offset'}
+    assert stamp['iso'].startswith(f"{stamp['date']}T{stamp['time']}")
 
 
 def test_listed_paths_work_with_the_read_and_write_tools():
@@ -282,12 +299,14 @@ def test_instructions_cover_the_common_workflows():
     assert 'bookmarks' in workflows
 
 
-def test_web_fetch_is_the_built_in_browser_and_takes_only_a_url():
+def test_web_fetch_is_the_built_in_browser_and_takes_a_url_offset_and_main_only():
     async def steps(client):
         return next(t for t in await client.list_tools() if t.name == 'web_fetch')
 
     tool = run(config.GatewayConfig(servers=()), steps)
-    assert list(tool.input_schema['properties']) == ['url']
+    assert list(tool.input_schema['properties']) == ['url', 'offset', 'main_only']
+    assert tool.input_schema['required'] == ['url']
+    assert all(p.get('description') for p in tool.input_schema['properties'].values())
     assert tool.annotations.read_only_hint is True and tool.annotations.open_world_hint is True
     assert 'not signed in to any site' in tool.description
 

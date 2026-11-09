@@ -41,7 +41,7 @@ obsidian-mcp  todo-mcp  pinboard-mcp  windows-mcp  --+
 | Area | Tools |
 |---|---|
 | Date and time | `get_current_timestamp` |
-| Journal | `journal_list_month`, `journal_read`, `journal_append` |
+| Journal | `journal_list_month`, `journal_read`, `journal_append`, `journal_prepend` |
 | Projects | `projects_list`, `projects_files`, `projects_create`, `projects_read`, `projects_write` |
 | Wiki | `wiki_list`, `wiki_read` |
 | Tasks | `tasks_get_lists`, `tasks_get_tasks`, `tasks_get_due_today`, `tasks_get_completed_between`, `tasks_add_task`, `tasks_update_task`, `tasks_complete_task`, `tasks_get_steps`, `tasks_add_step`, `tasks_update_step`, `tasks_complete_step` |

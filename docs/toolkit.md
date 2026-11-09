@@ -6,10 +6,11 @@ Claude doesn't see the backends. It sees one server called `claudeplay` with a s
 
 | Tool | What it does | Backend tool |
 |---|---|---|
-| `get_current_timestamp` | Today's date, day of the week, month, day and year, and the current time to the second with the UTC offset and time zone name, in the laptop's time zone | built into claudeplay |
+| `get_current_timestamp` | The current date and time in every common form, in the laptop's time zone, with the same fields as obsidian-mcp's `get_current_timestamp` | built into claudeplay |
 | `journal_list_month` | Which days in a month have an entry | obsidian `list_journal_entries_by_year_and_month` |
 | `journal_read` | Reads one day's entry | obsidian `read_journal_entry` |
-| `journal_append` | Adds a note to the end of today's entry | obsidian `append_to_todays_journal` |
+| `journal_append` | Adds text to the end of a day's entry, today by default | obsidian `append_to_journal_entry` |
+| `journal_prepend` | Adds an entry at the top of a day's entry, below any frontmatter, today by default | obsidian `prepend_to_journal_entry` |
 | `projects_list` | Lists projects | obsidian `list_projects` |
 | `projects_files` | Lists the files in a project | obsidian `list_project_content` |
 | `projects_create` | Creates an empty project | obsidian `create_project` |
@@ -33,7 +34,7 @@ Claude doesn't see the backends. It sees one server called `claudeplay` with a s
 | `bookmarks_update` | Changes a bookmark, found by its URL | pinboard `update_bookmark` |
 | `pc_files` | Reads, writes, copies, moves, deletes, lists, searches or gets info on files. Use absolute paths | windows `FileSystem` |
 | `pc_shell` | Runs a PowerShell command | windows `PowerShell` |
-| `web_fetch` | Gets a page's title and visible text, after its JavaScript runs, in a fresh headless Edge, signed in to nothing. Works while locked | built into claudeplay |
+| `web_fetch` | Gets a page's title and visible text, after its JavaScript runs, in a fresh headless Edge, signed in to nothing. Works while locked. Reads long pages in parts with `offset`, and `main_only` leaves out menus, sidebars, headers, footers and pop-ups | built into claudeplay |
 
 The `[tasks]` section of `config.toml` holds your account's lists. `common_lists` maps list names to ids, which are added to the `tasks_get_lists` description so Claude can often skip that call. `due_today` names which of them `tasks_get_due_today` covers. They live in the config, not the repo, because they're specific to your account. To find an id, call `tasks_get_lists`.
 
