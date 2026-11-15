@@ -75,7 +75,7 @@ def test_build_requires_complete_auth_config():
     ):
         with pytest.raises(config.ConfigError):
             auth.build(bad, url)
-    provider, _ = auth.build(good, url, store_dir=config.data_dir() / 'oauth')
+    provider, _ = auth.build(good, url, store_dir=config.home_dir() / 'oauth')
     assert provider is not None
 
 
@@ -164,7 +164,7 @@ def test_real_oauth_endpoints_are_published_and_mcp_requires_auth():
     port = free_port()
     base = f'http://127.0.0.1:{port}'
     acfg = config.AuthConfig(client_id='id', client_secret='secret', jwt_signing_key=KEY, allowed_user_ids=(ME,))
-    provider, allow_list = auth.build(acfg, base, store_dir=config.data_dir() / 'oauth')
+    provider, allow_list = auth.build(acfg, base, store_dir=config.home_dir() / 'oauth')
     gw, _ = gateway.build(config.GatewayConfig(servers=(fake('a'),)), raw=True, auth=provider, extra_middleware=(allow_list,))
 
     async def go():

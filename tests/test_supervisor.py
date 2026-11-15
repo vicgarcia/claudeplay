@@ -18,12 +18,13 @@ def free_port() -> int:
 
 
 def write_config(tmp_path, port: int):
-    path = tmp_path / 'config.toml'
+    path = tmp_path / 'config.yaml'
     path.write_text(
-        f"[gateway]\nport = {port}\n\n"
-        f"[servers.a]\ncommand = '{sys.executable}'\nargs = ['{FAKE_SERVER}']\n\n"
-        f"[servers.off]\ncommand = '{sys.executable}'\nenabled = false\n"
+        f"gateway:\n  port: {port}\n\n"
+        f"servers:\n  a:\n    command: '{sys.executable}'\n    args: ['{FAKE_SERVER}']\n"
+        f"  off:\n    command: '{sys.executable}'\n    enabled: false\n"
     )
+    (tmp_path / 'toolkit.yaml').write_text('servers:\n  a: {}\n  off: {}\n')
     return path
 
 
@@ -117,12 +118,55 @@ def tunnel_sup(tmp_path, monkeypatch, command=None):
     return s
 
 
-def test_tunnel_command_runs_the_named_tunnel_against_the_gateway(tmp_path):
-    path = tmp_path / 'config.toml'
-    path.write_text("[gateway]\nport = 9999\n\n[tunnel]\nname = 'claudeplay'\ncommand = 'cf.exe'\n")
+TUNNEL_ID = '123e4567-e89b-12d3-a456-426614174000'
+
+
+def test_tunnel_command_runs_the_tunnel_by_id_with_its_credentials_and_no_cert(tmp_path, isolated_home):
+    creds = isolated_home / 'cloudflared' / f'{TUNNEL_ID}.json'
+    creds.parent.mkdir(parents=True)
+    creds.write_text('{}')
+    path = tmp_path / 'config.yaml'
+    path.write_text("gateway:\n  port: 9999\n\ntunnel:\n  name: claudeplay\n  command: cf.exe\n")
     cmd = Supervisor(config.load(path), path).tunnel_command()
     assert cmd[0] == 'cf.exe' and cmd[1] == 'tunnel' and '--no-autoupdate' in cmd
-    assert cmd[-4:] == ['run', '--url', 'http://127.0.0.1:9999', 'claudeplay']
+    assert cmd[cmd.index('run'):] == ['run', '--credentials-file', str(creds), '--url', 'http://127.0.0.1:9999', TUNNEL_ID]
+    # cert.pem is only needed to look a tunnel up by name, and logging goes through our own file handle
+    assert '--origincert' not in cmd and '--logfile' not in cmd
+
+
+def test_tunnel_without_credentials_is_down_and_leaves_the_gateway_running(tmp_path):
+    path = write_config(tmp_path, free_port())
+    cfg = dataclasses.replace(config.load(path), tunnel=config.TunnelConfig(name='claudeplay'))
+    s = Supervisor(cfg, path, ['--insecure-no-auth'])
+    try:
+        s.start()
+        assert s.alive() and s.tunnel_state() == supervisor.TUNNEL_DOWN
+    finally:
+        s.stop()
+
+
+def test_tunnel_output_goes_to_the_log_file_stdout_and_stderr(tmp_path, monkeypatch, isolated_logs):
+    s = tunnel_sup(tmp_path, monkeypatch, command=[sys.executable, '-c', "import sys; print('out-line'); print('err-line', file=sys.stderr)"])
+    try:
+        s.start()
+        log_file = isolated_logs / 'cloudflared.log'
+        assert wait_for(lambda: log_file.exists() and 'err-line' in log_file.read_text() and 'out-line' in log_file.read_text(), 10)
+    finally:
+        s.stop()
+
+
+def test_a_big_tunnel_log_is_moved_aside_on_start_and_a_small_one_is_kept(tmp_path):
+    log_file = tmp_path / 'cloudflared.log'
+    log_file.write_text('x' * 10)
+    Supervisor.rotate_tunnel_log(log_file)
+    assert log_file.read_text() == 'x' * 10 and not (tmp_path / 'cloudflared.log.1').exists()
+    log_file.write_text('y' * (supervisor.TUNNEL_LOG_LIMIT + 1))
+    (tmp_path / 'cloudflared.log.1').write_text('old')
+    Supervisor.rotate_tunnel_log(log_file)
+    assert not log_file.exists()
+    assert (tmp_path / 'cloudflared.log.1').read_text().startswith('yyy')
+    # nothing to rotate is fine
+    Supervisor.rotate_tunnel_log(log_file)
 
 
 def test_tunnel_starts_with_the_gateway_and_stop_takes_both(tmp_path, monkeypatch):
@@ -176,7 +220,7 @@ def test_gateway_accepts_the_public_host_and_rejects_others(tmp_path, monkeypatc
     # no [tunnel] here: only the Host check is under test
     port = free_port()
     path = write_config(tmp_path, port)
-    path.write_text(path.read_text().replace('[gateway]\n', "[gateway]\npublic_base_url = 'https://cp-test.example.net'\n"))
+    path.write_text(path.read_text().replace('gateway:\n', 'gateway:\n  public_base_url: https://cp-test.example.net\n'))
     s = Supervisor(config.load(path), path, ['--insecure-no-auth'])
     try:
         s.start()

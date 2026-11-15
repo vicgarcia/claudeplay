@@ -25,6 +25,9 @@ TUNNEL_UP = 'up'
 TUNNEL_DOWN = 'down'
 # seconds between attempts to bring a dead tunnel back
 TUNNEL_RETRY_SECONDS = 15.0
+# cloudflared never rotates its own output, so a log over this size is moved aside when the tunnel starts
+TUNNEL_LOG_LIMIT = 500_000
+TUNNEL_LOG = 'cloudflared.log'
 
 class PortInUse(Exception):
     def __init__(self, port: int, owner: str):
@@ -80,12 +83,23 @@ class Supervisor:
     # the tunnel
 
     def tunnel_command(self) -> list[str]:
+        ''' run the tunnel by id with its credentials file: that needs no cert.pem, which only looks a name up '''
         tunnel = self.cfg.tunnel
+        credentials = config.tunnel_credentials(tunnel)
         return [
             tunnel.command, 'tunnel', '--no-autoupdate',
-            '--logfile', str(config.logs_dir() / 'cloudflared.log'),
-            'run', '--url', f'http://{self.cfg.host}:{self.cfg.port}', tunnel.name,
+            'run', '--credentials-file', str(credentials),
+            '--url', f'http://{self.cfg.host}:{self.cfg.port}', config.tunnel_id(credentials),
         ]
+
+    @staticmethod
+    def rotate_tunnel_log(path: Path) -> None:
+        ''' keep one previous log: cloudflared.log.1 replaces any older one '''
+        try:
+            if path.stat().st_size > TUNNEL_LOG_LIMIT:
+                os.replace(path, path.with_name(path.name + '.1'))
+        except OSError:
+            pass
 
     def tunnel_alive(self) -> bool:
         return self._tunnel is not None and self._tunnel.poll() is None
@@ -95,16 +109,21 @@ class Supervisor:
             return
         config.logs_dir().mkdir(parents=True, exist_ok=True)
         self._tunnel_started = time.monotonic()
+        logfile = config.logs_dir() / TUNNEL_LOG
         try:
-            self._tunnel = subprocess.Popen(
-                self.tunnel_command(),
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                creationflags=winutil.CREATE_NO_WINDOW,
-            )
-        except OSError as e:
-            # a missing cloudflared must not take the local gateway down with it
+            command = self.tunnel_command()
+            self.rotate_tunnel_log(logfile)
+            # cloudflared logs to stderr; taking both streams here keeps failures from before it opens a log of its own
+            with open(logfile, 'ab') as out:
+                self._tunnel = subprocess.Popen(
+                    command,
+                    stdin=subprocess.DEVNULL,
+                    stdout=out,
+                    stderr=out,
+                    creationflags=winutil.CREATE_NO_WINDOW,
+                )
+        except (OSError, config.ConfigError) as e:
+            # a missing cloudflared or credentials must not take the local gateway down with it
             self._tunnel = None
             log.warning('could not start tunnel: %s', e)
             return

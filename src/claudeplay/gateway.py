@@ -127,11 +127,20 @@ def _mount(gw: FastMCP, server: config.ResolvedServer) -> FastMCP:
     return proxy
 
 
-async def _probe(name: str, proxy: FastMCP, board: StatusBoard) -> None:
+async def _probe(
+    name: str,
+    proxy: FastMCP,
+    board: StatusBoard,
+    tk: toolkit.Toolkit | None = None,
+    taken: tuple[str, ...] = (),
+    on_instructions=None,
+) -> None:
+    section = (tk.servers.get(name) if tk else None) or toolkit.ServerToolkit()
     try:
         async with asyncio.timeout(PROBE_TIMEOUT):
             async with Client(proxy, mode='legacy') as client:
                 tools = await client.list_tools()
+                instructions = client.initialize_result.instructions if client.initialize_result else None
     except Exception as e:
         # exception class only: messages can echo command lines
         log.warning('server %s failed to start: %s', name, type(e).__name__)
@@ -142,12 +151,24 @@ async def _probe(name: str, proxy: FastMCP, board: StatusBoard) -> None:
         log.warning('server %s exposed no tools', name)
         board.set(name, FAILED, 'started but exposed no tools')
         return
+    # the toolkit names backend tools and arguments, so a rename in a backend is reported here instead of silently dropping the tool
+    problems = toolkit.check_backend(name, tools, section.entries, section.expose_all, taken)
+    # the backend's own instructions go to claude with the toolkit's additions, so they are known only now
+    if on_instructions is not None:
+        on_instructions(name, instructions or '')
+    if problems:
+        for problem in problems:
+            log.warning('server %s: toolkit.yaml: %s', name, problem)
+        more = f' (and {len(problems) - 1} more)' if len(problems) > 1 else ''
+        board.set(name, FAILED, f'toolkit.yaml: {problems[0]}{more}', tools=len(tools))
+        return
     log.info('server %s ok, %d tools', name, len(tools))
     board.set(name, OK, tools=len(tools))
 
 
 def build(
     cfg: config.GatewayConfig,
+    tk: toolkit.Toolkit | None = None,
     board: StatusBoard | None = None,
     auth: Any = None,
     extra_middleware: tuple[Middleware, ...] = (),
@@ -156,14 +177,24 @@ def build(
 ) -> tuple[FastMCP, StatusBoard]:
     ''' build the gateway; a server that cannot be set up is marked failed and the rest still serve
 
-    by default only the curated toolkit is visible; raw=True exposes every backend tool as <server>_<tool>
+    by default only the tools listed in the toolkit are visible (with none given, just the built-in clock);
+    raw=True exposes every backend tool as <server>_<tool>
     '''
     board = board or StatusBoard(None, cfg.endpoint_url)
+    tk = tk or toolkit.Toolkit()
     proxies: dict[str, FastMCP] = {}
+    backend_instructions: dict[str, str] = {}
+    taken = tuple(e.name for e in tk.entries((clock.ENTRY,)))
+
+    def learned(name: str, text: str) -> None:
+        backend_instructions[name] = text
+        if not raw:
+            # takes effect for every session that starts from now on
+            gw.instructions = tk.instructions_for(cfg, backend_instructions) or None
 
     @asynccontextmanager
     async def lifespan(_server: FastMCP):
-        tasks = [asyncio.create_task(_probe(n, p, board)) for n, p in proxies.items()]
+        tasks = [asyncio.create_task(_probe(n, p, board, tk, taken, learned)) for n, p in proxies.items()]
         try:
             yield {}
         finally:
@@ -173,13 +204,13 @@ def build(
 
     gw = FastMCP(
         toolkit.NAME,
-        instructions=toolkit.instructions(cfg.tasks),
+        instructions=None if raw else tk.instructions_for(cfg) or None,
         auth=auth,
         lifespan=lifespan,
         middleware=[*extra_middleware, ToolLogMiddleware()],
     )
     if not raw:
-        gw.add_transform(toolkit.Catalog(toolkit.catalog(cfg.tasks)))
+        gw.add_transform(toolkit.Catalog(tk.entries((clock.ENTRY,)), tk.passthrough()))
         gw.add_provider(clock.server(), namespace=clock.NAME)
 
     for server in cfg.servers:
@@ -199,10 +230,10 @@ def build(
     return gw, board
 
 
-def serve(cfg: config.GatewayConfig, auth: Any = None, extra_middleware: tuple[Middleware, ...] = (), raw: bool = False) -> None:
+def serve(cfg: config.GatewayConfig, tk: toolkit.Toolkit | None = None, auth: Any = None, extra_middleware: tuple[Middleware, ...] = (), raw: bool = False) -> None:
     ''' run the gateway on the configured host and port until the process is stopped '''
     board = StatusBoard(config.status_path(), cfg.endpoint_url)
-    gw, board = build(cfg, board=board, auth=auth, extra_middleware=extra_middleware, raw=raw)
+    gw, board = build(cfg, tk, board=board, auth=auth, extra_middleware=extra_middleware, raw=raw)
     log.info('gateway starting on %s:%d', cfg.host, cfg.port)
     # fastmcp leaves Host/Origin checks off by default. with them on, only localhost and the tunnel's
     # hostname get through. the origin is listed because the tunnel reaches us over plain http, so

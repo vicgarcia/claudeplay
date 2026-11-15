@@ -1,4 +1,4 @@
-'''logging setup: rotating file under the data dir; never arguments, tokens or query strings'''
+'''logging setup: rotating file under the logs dir; never arguments, tokens or query strings'''
 
 import logging
 from logging.handlers import RotatingFileHandler

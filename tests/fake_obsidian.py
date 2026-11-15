@@ -2,7 +2,8 @@
 
 from fastmcp import FastMCP
 
-mcp = FastMCP('fake-obsidian')
+FAKE_INSTRUCTIONS = 'fake obsidian instructions: call get_todays_date, then add_note_to_journal_entry.'
+mcp = FastMCP('fake-obsidian', instructions=FAKE_INSTRUCTIONS)
 journal: dict[str, str] = {'2026-10-01': 'went for a run'}
 files: dict[str, str] = {
     'projects/garage/plan.md': 'shelves',
@@ -14,8 +15,9 @@ TODAY = '2026-10-29'
 
 
 @mcp.tool()
-def get_current_date() -> dict:
-    return {'formatted': TODAY, 'human': 'Thursday October 29, 2026'}
+def get_todays_date() -> dict:
+    ''' today's date in the user's time zone. '''
+    return {'date': TODAY}
 
 
 @mcp.tool()
@@ -30,10 +32,34 @@ def read_journal_entry(date: str) -> dict:
 
 
 @mcp.tool()
-def append_to_todays_journal(text: str) -> dict:
-    created = TODAY not in journal
-    journal[TODAY] = (journal.get(TODAY, '') + '\n\n' + text).strip()
-    return {'success': True, 'path': f'journal/{TODAY}.md', 'created': created}
+def append_to_journal_entry(text: str, date: str | None = None) -> dict:
+    day = date or TODAY
+    created = day not in journal
+    journal[day] = journal.get(day, '') + text
+    return {'success': True, 'path': f'journal/{day}.md', 'created': created}
+
+
+@mcp.tool()
+def prepend_to_journal_entry(text: str, date: str | None = None) -> dict:
+    day = date or TODAY
+    created = day not in journal
+    journal[day] = text + journal.get(day, '')
+    return {'success': True, 'path': f'journal/{day}.md', 'created': created}
+
+
+@mcp.tool()
+def add_note_to_journal_entry(text: str, date: str | None = None) -> dict:
+    day = date or TODAY
+    created = day not in journal
+    journal[day] = (journal.get(day) or '\n\n# Daily Notes\n') + f'{text}\n{TODAY} 09:00\n\n'
+    return {'success': True, 'path': f'journal/{day}.md', 'created': created, 'timestamp': f'{TODAY} 09:00'}
+
+
+@mcp.tool()
+def write_journal_entry(content: str, date: str | None = None) -> dict:
+    ''' not in the catalog: overwrites a whole entry '''
+    journal[date or TODAY] = content
+    return {'success': True}
 
 
 @mcp.tool()

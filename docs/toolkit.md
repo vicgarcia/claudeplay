@@ -1,115 +1,94 @@
 # Toolkit
 
-Claude doesn't see the backends. It sees one server called `claudeplay` with a short, curated list of tools. That list is `CATALOG` in [toolkit.py](../src/claudeplay/toolkit.py), and it's the only thing that decides what Claude can call.
+Claude doesn't see your servers directly. It sees one server called `claudeplay` with the tools `toolkit.yaml` exposes, plus the built-in `get_current_timestamp`. That file, in the same folder as `config.yaml`, is the only thing that decides what Claude can call. [toolkit.example.yaml](../toolkit.example.yaml) is a complete, commented example, and `claudeplay check` validates your file.
 
-## Current tools
+## Passthrough by default
 
-| Tool | What it does | Backend tool |
-|---|---|---|
-| `get_current_timestamp` | Today's date, day of the week, month, day and year, and the current time to the second with the UTC offset and time zone name, in the laptop's time zone | built into claudeplay |
-| `journal_list_month` | Which days in a month have an entry | obsidian `list_journal_entries_by_year_and_month` |
-| `journal_read` | Reads one day's entry | obsidian `read_journal_entry` |
-| `journal_append` | Adds a note to the end of today's entry | obsidian `append_to_todays_journal` |
-| `projects_list` | Lists projects | obsidian `list_projects` |
-| `projects_files` | Lists the files in a project | obsidian `list_project_content` |
-| `projects_create` | Creates an empty project | obsidian `create_project` |
-| `projects_read` | Reads a file in a project | obsidian `read_file`, limited by claudeplay |
-| `projects_write` | Creates a file in an existing project, or overwrites a whole one | obsidian `write_file`, limited by claudeplay |
-| `wiki_list` | Lists wiki articles | obsidian `list_wiki` |
-| `wiki_read` | Reads a wiki article. There's no tool for writing to the wiki | obsidian `read_file`, limited by claudeplay |
-| `tasks_get_lists` | Lists task lists with their ids | todo `get_lists` |
-| `tasks_get_tasks` | Lists the tasks in one list | todo `get_tasks` |
-| `tasks_get_due_today` | Finds open tasks due today in the main lists set by `due_today` in `[tasks]`. Takes no arguments. Only appears when `due_today` is set | todo `get_tasks_due_today` |
-| `tasks_get_completed_between` | Finds tasks completed between two dates. Defaults to the main lists when `due_today` is set; otherwise `list_ids` is required | todo `get_tasks_by_completed_date_range` |
-| `tasks_add_task` | Adds a task | todo `create_task` |
-| `tasks_update_task` | Changes a task | todo `update_task` |
-| `tasks_complete_task` | Marks a task as completed | todo `complete_task` |
-| `tasks_get_steps` | Lists a task's steps | todo `get_steps` |
-| `tasks_add_step` | Adds a step to a task | todo `create_step` |
-| `tasks_update_step` | Renames a step, or checks or unchecks it | todo `update_step` |
-| `tasks_complete_step` | Checks a step off | todo `complete_step` |
-| `bookmarks_list` | Lists bookmarks, filtered by tag and date. There is no keyword search | pinboard `get_bookmarks` |
-| `bookmarks_add` | Saves a new bookmark, and fails if the URL is already saved. The server instructions tell Claude to mark bookmarks private unless you ask otherwise, but the backend's own default is public | pinboard `add_bookmark` |
-| `bookmarks_update` | Changes a bookmark, found by its URL | pinboard `update_bookmark` |
-| `pc_files` | Reads, writes, copies, moves, deletes, lists, searches or gets info on files. Use absolute paths | windows `FileSystem` |
-| `pc_shell` | Runs a PowerShell command | windows `PowerShell` |
-| `web_fetch` | Gets a page's text. Headless by default, which works while locked but can't run JavaScript. With `use_dom`, reads the front tab of an open browser instead, which needs the laptop unlocked | windows `Scrape` |
+A tool you list with only a `source` reaches Claude exactly as its server defines it: the same name, description, argument names and descriptions, and annotations. The server's own instructions go to Claude too. The point is that a server's text is written to go with its own tools, so it stays correct without a second copy to maintain. When the server is upgraded, Claude sees the upgrade, which is the behaviour you want from servers you trust.
 
-The `[tasks]` section of `config.toml` holds your account's lists. `common_lists` maps list names to ids, which are added to the `tasks_get_lists` description so Claude can often skip that call. `due_today` names which of them `tasks_get_due_today` covers. They live in the config, not the repo, because they're specific to your account. To find an id, call `tasks_get_lists`.
+```yaml
+servers:
+  notes:
+    tools:
+      - source: read_file
+      - source: write_file
+```
 
-claudeplay enforces the project and wiki limits, in `PathGuard` in `toolkit.py`, because obsidian-mcp only offers general `read_file` and `write_file` tools. `projects_read` and `projects_write` refuse any path outside a project, `projects_write` also refuses a project that doesn't exist yet, and `wiki_read` refuses any path outside the wiki. The check reads the path's text, so a link inside the vault could still lead elsewhere in the vault. The general tools can't be called directly. `pc_files` and `pc_shell` are separate and can still reach the whole laptop, including the vault.
+Change as little as you need. Everything below is optional, per tool or per server.
 
-A tool only appears when its backend is enabled and running. Everything else a backend offers, including prompts and resources, is hidden and can't be called even by name.
+## Exposing tools
+
+| Setting | What it does |
+|---|---|
+| `tools` | A list of the tools to expose, in the order Claude sees them. Each has a `source`, the server's own tool name |
+| `expose_all: true` | Exposes every tool the server has, unchanged and under its own name, after the ones you list. Any tools you list are then changes to some of them. New tools in a server appear on their own, so use this for servers you trust to add only safe tools |
+
+A server named in `config.yaml` with nothing listed and no `expose_all` exposes nothing, and a warning says so. A tool the server has but you don't expose, including its prompts and resources, is hidden and can't be called even by name.
+
+## Changing a tool
+
+| Field | What it does |
+|---|---|
+| `name` | The name Claude sees; left out, it's the server's name. Rename only when the server's text doesn't refer to its tools by name, because Claude would be told to call tools by names it can't see |
+| `description` | Replaces the server's description |
+| `description_append` | Added after the description, whichever it is. The place for what only you know, such as which lists are your main ones |
+| `read_only`, `destructive`, `open_world` | Annotations: the tool only reads, can overwrite or delete, or reaches beyond your own data. Left out, the server's own are used. Many servers set none, and then Claude may ask before it uses a tool |
+| `args` | Argument name to a description, replacing the server's |
+| `hide` | Arguments Claude can't see or set, so the server's default applies. They must be optional |
+| `fixed` | Arguments Claude can't see or set, always sent with the value given here |
+| `defaults` | Visible arguments with a different default from the server's |
+
+YAML anchors (`&name`, `*name`) avoid repeating a value, such as a set of list ids used by two tools.
+
+## Server instructions
+
+Each server's own instructions, which it sends when a client connects, are read when the gateway starts that server and passed to Claude. A session that connects before a server has started gets that server's part the next time it connects.
+
+| Setting | What it does |
+|---|---|
+| `instructions_append` | Added after the server's instructions |
+| `instructions` | Replaces the server's instructions; an empty string sends none |
+| top-level `instructions` | Sent first, for ideas that span servers |
+
+Claude receives the top level, then each enabled server's, in the order of `config.yaml`. A disabled server, or one that exposes nothing, adds nothing. Keep these about how to use the tools, not how Claude should sound.
+
+## Checks at startup
+
+Both files are validated, and an unknown key or a wrong type is an error that names the file and the key, never the value. A server named in `toolkit.yaml` must be in `config.yaml`, and two tools can't share a name or use the built-in's.
+
+When the gateway starts a server it also compares what you listed with what the server actually offers. A listed tool the server lacks, an argument named in `args`, `hide`, `fixed` or `defaults` that the tool doesn't take, or an unlisted tool whose name another tool already uses, marks that server `failed`, with the tool or argument named. This catches a renamed tool in an upgraded server, which would otherwise just vanish from Claude's list.
 
 ## What Claude actually receives
 
-The backends' docstrings never reach Claude. FastMCP builds a tool listing from each backend function, and the gateway replaces most of it before Claude sees it. For `journal_read`:
-
-| | From obsidian-mcp | What Claude gets |
-|---|---|---|
-| Name | `read_journal_entry` | `journal_read` |
-| Description | Full docstring, including `Args:` and `Returns:` | `Read the journal entry for one day. Returns exists=false if there is no entry.` |
-| `date` argument | A string with no description | A string described as `the day, as YYYY-MM-DD` |
-| Annotations | None | read-only, non-destructive, closed-world |
-
-Claude gets these, in rough order of how much they steer it:
+FastMCP builds a tool listing from each server's functions, and the gateway passes it on with the changes you list. Claude is steered, roughly in this order, by:
 
 1. **Which tools exist.** Fewer, clearly distinct tools lead to better choices.
-2. **Tool names.** A domain prefix plus a plain verb.
+2. **Tool names.**
 3. **Descriptions.** When to use the tool, what it returns, and how it relates to other tools.
 4. **Argument names, types and descriptions.**
-5. **Server instructions** (`INSTRUCTIONS`), sent once on connecting, for ideas that span tools and your common workflows. Keep these about how to use the tools, not how Claude should sound.
-6. **Results and error messages.** These go straight into the conversation, so a clear error teaches Claude as well as a description does.
+5. **Server instructions**, sent once on connecting, for ideas that span tools and common workflows.
+6. **Results and error messages.** These go straight into the conversation.
 
-Annotations matter mainly to the app, which may use them when deciding whether to ask before running a tool.
-
-## Adding a tool
-
-1. Find the backend tool's name. It's `<server>_<tool>`, and `serve --raw` lists them all ([how](operations.md#testing-without-the-public-endpoint)).
-2. Add an `Entry` to `CATALOG`:
-
-   ```python
-   Entry(
-       name='wiki_list',
-       source='obsidian_list_wiki',
-       description='List the wiki articles, with their paths.',
-       read_only=True,
-   ),
-   ```
-
-3. **Restart** in the tray, then reconnect the connector.
-
-| `Entry` field | Purpose |
-|---|---|
-| `name` | What Claude calls it |
-| `source` | The backend tool, as `<server>_<tool>` |
-| `description` | Replaces the backend's docstring |
-| `read_only` | True if it changes nothing |
-| `args` | Descriptions for arguments, keyed by name. Names the backend doesn't have are ignored |
-| `hide` | Arguments Claude can't see or set, so the backend's default applies. They must be optional |
-| `fixed` | Arguments Claude can't see or set, always sent with the value given here |
-| `defaults` | Visible arguments with a different default from the backend's |
-| `guard` | A `PathGuard` limiting `file_path` to one part of the vault |
-| `destructive` | True if it can delete or overwrite |
-| `open_world` | True if it reaches beyond your own data |
+Annotations matter mainly to the app, which may use them to decide whether to ask before running a tool.
 
 ## What belongs where
 
-The catalog mostly changes how a tool is presented. It can rename, describe, hide, filter or limit a tool's paths, but it can't change what a tool returns.
+The toolkit only changes how a tool is presented. It can pick, rename, describe, hide and fix arguments of a tool, but it can't change what a tool returns or limit what it can do.
 
 | You want to | Do it in |
 |---|---|
-| Rename, describe, or hide a tool or argument | `toolkit.py` |
-| Change behaviour or results | The backend's repo |
-| Limit a general backend tool for your own use | A `guard` in `toolkit.py`, leaving the backend general |
-| Combine two backends in one tool | A new tool in claudeplay. There are none so far |
+| Pick, describe or annotate a tool or argument | `toolkit.yaml` |
+| Change behaviour or results, or limit what a tool may touch | The server's own repo |
+| Make a server's own text correct for Claude | The server's repo, so it stays right everywhere it's used |
 
-## Adding a backend
+claudeplay checks no paths and holds no logic about any server. A server that exposes general file tools exposes them to Claude as they are, so put the limits you want in that server.
+
+## Adding a server
 
 Any stdio MCP server can be added:
 
-1. Add a `[servers.<name>]` section to `config.toml` with its `command`, `args` and `env`. Pin the version if it's downloaded at run time.
-2. **Quit** and start the tray again, so its menu picks up the new server.
-3. Add catalog entries. Without them, Claude sees nothing from it.
+1. Add it under `servers:` in `config.yaml` with its `command`, `args` and `env`. Pin the version if it's downloaded at run time.
+2. Add a section for it in `toolkit.yaml`: `expose_all: true`, or the tools you want.
+3. **Quit** and start the tray again, so its menu picks up the new server.
 
-Backends are assumed to use the older MCP 1.x protocol, so the gateway connects to all of them in `legacy` mode.
+Servers are assumed to use the older MCP 1.x protocol, so the gateway connects to all of them in `legacy` mode.

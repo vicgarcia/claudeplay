@@ -10,7 +10,7 @@ from pathlib import Path
 import pystray
 from PIL import Image, ImageDraw
 
-from . import config, supervisor, winutil
+from . import clock, config, supervisor, toolkit, winutil
 from .supervisor import Supervisor
 
 log = logging.getLogger('claudeplay.tray')
@@ -105,6 +105,7 @@ class TrayApp:
             pystray.Menu.SEPARATOR,
             pystray.MenuItem('Copy connector URL', lambda _i, _m: self.copy_url()),
             pystray.MenuItem('Open config folder', lambda _i, _m: self.open_config_folder()),
+            pystray.MenuItem('Open logs folder', lambda _i, _m: self.open_logs_folder()),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem('Quit', lambda _i, _m: self.quit()),
         )
@@ -161,8 +162,12 @@ class TrayApp:
         winutil.copy_to_clipboard(self.cfg.endpoint_url)
 
     def open_config_folder(self) -> None:
-        config.data_dir().mkdir(parents=True, exist_ok=True)
-        os.startfile(config.data_dir())
+        config.home_dir().mkdir(parents=True, exist_ok=True)
+        os.startfile(config.home_dir())
+
+    def open_logs_folder(self) -> None:
+        config.logs_dir().mkdir(parents=True, exist_ok=True)
+        os.startfile(config.logs_dir())
 
     def quit(self) -> None:
         self.sup.stop()
@@ -213,6 +218,8 @@ def run(config_path=None, extra_args: list[str] | None = None, autostart_gateway
     try:
         config_path = config_path or config.default_config_path()
         cfg = config.load(config_path)
+        # the gateway would refuse a bad toolkit.yaml and the tray would only show a crash, so say why here
+        toolkit.load(config_path, cfg, (clock.ENTRY,))
     except config.ConfigError as e:
         message_box(f'cannot start: {e}')
         return 2

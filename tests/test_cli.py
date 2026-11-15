@@ -3,13 +3,21 @@ import pytest
 from claudeplay import cli
 
 NO_AUTH = '''
-[servers.a]
-command = 'x'
+servers:
+  a:
+    command: x
 '''
+TOOLKIT = 'servers:\n  a:\n    tools:\n      - {source: s, description: d}\n'
+
+
+@pytest.fixture(autouse=True)
+def toolkit_file(tmp_path):
+    ''' every config here is tmp_path/config.yaml, so its toolkit is tmp_path/toolkit.yaml '''
+    (tmp_path / 'toolkit.yaml').write_text(TOOLKIT)
 
 
 def test_serve_refuses_without_auth_section(tmp_path, capsys):
-    path = tmp_path / 'config.toml'
+    path = tmp_path / 'config.yaml'
     path.write_text(NO_AUTH)
     with pytest.raises(SystemExit) as e:
         cli.main(['--config', str(path), 'serve'])
@@ -18,8 +26,8 @@ def test_serve_refuses_without_auth_section(tmp_path, capsys):
 
 
 def test_check_reports_servers(tmp_path, capsys):
-    path = tmp_path / 'config.toml'
-    path.write_text(NO_AUTH + "\n[servers.b]\ncommand = 'y'\nenabled = false\n")
+    path = tmp_path / 'config.yaml'
+    path.write_text(NO_AUTH + "  b:\n    command: y\n    enabled: false\n")
     with pytest.raises(SystemExit) as e:
         cli.main(['--config', str(path), 'check'])
     assert e.value.code == 0
@@ -39,15 +47,15 @@ def test_genkey_is_long_and_random(capsys):
 def test_config_switch_allows_no_auth_only_on_loopback(tmp_path, capsys, monkeypatch):
     from claudeplay import gateway
     served = []
-    monkeypatch.setattr(gateway, 'serve', lambda cfg, **kw: served.append(cfg))
-    path = tmp_path / 'config.toml'
+    monkeypatch.setattr(gateway, 'serve', lambda cfg, *a, **kw: served.append(cfg))
+    path = tmp_path / 'config.yaml'
 
-    path.write_text("[gateway]\ninsecure_no_auth = true\n" + NO_AUTH)
+    path.write_text("gateway:\n  insecure_no_auth: true\n" + NO_AUTH)
     with pytest.raises(SystemExit) as e:
         cli.main(['--config', str(path), 'serve'])
     assert e.value.code == 0 and len(served) == 1
 
-    path.write_text("[gateway]\nhost = '0.0.0.0'\ninsecure_no_auth = true\n" + NO_AUTH)
+    path.write_text("gateway:\n  host: 0.0.0.0\n  insecure_no_auth: true\n" + NO_AUTH)
     with pytest.raises(SystemExit) as e:
         cli.main(['--config', str(path), 'serve'])
     assert e.value.code == 2 and len(served) == 1
@@ -57,9 +65,9 @@ def test_config_switch_allows_no_auth_only_on_loopback(tmp_path, capsys, monkeyp
 def test_no_auth_is_refused_while_a_tunnel_is_enabled(tmp_path, capsys, monkeypatch):
     from claudeplay import gateway
     served = []
-    monkeypatch.setattr(gateway, 'serve', lambda cfg, **kw: served.append(cfg))
-    path = tmp_path / 'config.toml'
-    path.write_text("[gateway]\ninsecure_no_auth = true\n\n[tunnel]\nname = 't'\n" + NO_AUTH)
+    monkeypatch.setattr(gateway, 'serve', lambda cfg, *a, **kw: served.append(cfg))
+    path = tmp_path / 'config.yaml'
+    path.write_text("gateway:\n  insecure_no_auth: true\n\ntunnel:\n  name: t\n" + NO_AUTH)
     with pytest.raises(SystemExit) as e:
         cli.main(['--config', str(path), 'serve', '--insecure-no-auth'])
     assert e.value.code == 2 and served == []

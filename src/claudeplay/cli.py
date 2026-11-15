@@ -6,7 +6,7 @@ import secrets
 import sys
 from pathlib import Path
 
-from . import config, logs
+from . import clock, config, logs, toolkit
 
 
 LOOPBACK = {'127.0.0.1', 'localhost', '::1'}
@@ -24,22 +24,24 @@ def cmd_serve(args: argparse.Namespace) -> int:
     from . import gateway
     logs.setup(console=args.console)
     cfg = _load(args.config)
+    # --raw is for debugging a backend and needs no toolkit
+    tk = None if args.raw else toolkit.load(_path(args.config), cfg, (clock.ENTRY,))
     if cfg.auth is not None:
         from . import auth
         if config.ensure_signing_key(_path(args.config)):
             logging.getLogger('claudeplay').info('generated jwt_signing_key in the config file')
             cfg = _load(args.config)
         provider, allow_list = auth.build(cfg.auth, cfg.base_url)
-        gateway.serve(cfg, auth=provider, extra_middleware=(allow_list,), raw=args.raw)
+        gateway.serve(cfg, tk, auth=provider, extra_middleware=(allow_list,), raw=args.raw)
     elif args.insecure_no_auth or cfg.insecure_no_auth:
         if cfg.host not in LOOPBACK:
             raise config.ConfigError(f'refusing to serve without authentication on {cfg.host}; use 127.0.0.1')
         if cfg.tunnel_enabled:
-            raise config.ConfigError('refusing to serve without authentication while a [tunnel] is enabled')
+            raise config.ConfigError('refusing to serve without authentication while a tunnel is enabled')
         logging.getLogger('claudeplay').warning('serving WITHOUT authentication (local use only)')
-        gateway.serve(cfg, raw=args.raw)
+        gateway.serve(cfg, tk, raw=args.raw)
     else:
-        raise config.ConfigError('no [auth] section in the config; add one, or set insecure_no_auth = true under [gateway] for local use')
+        raise config.ConfigError('no auth section in the config; add one, or set insecure_no_auth: true under gateway for local use')
     return 0
 
 
@@ -50,16 +52,25 @@ def cmd_check(args: argparse.Namespace) -> int:
     print(f'config:   {path}')
     for line in config.describe(cfg):
         print(line)
+    tk = toolkit.load(path, cfg, (clock.ENTRY,))
+    print(f'toolkit:  {config.toolkit_path(path)}')
+    counts = tk.counts()
     print('checks:')
     for server in cfg.servers:
+        if server.name not in counts:
+            listed = 'no toolkit section, exposes nothing'
+        elif tk.servers[server.name].expose_all:
+            listed = f'every tool exposed, {counts[server.name]} of them changed'
+        else:
+            listed = f'{counts[server.name]} tools listed'
         if not server.enabled:
-            print(f'  {server.name}: disabled')
+            print(f'  {server.name}: disabled, {listed}')
             continue
         try:
             config.resolve(server)
-            print(f'  {server.name}: ok')
+            print(f'  {server.name}: ok, {listed}')
         except config.ConfigError as e:
-            print(f'  {server.name}: {e}')
+            print(f'  {server.name}: {e}, {listed}')
     return 0
 
 
@@ -109,7 +120,7 @@ def cmd_genkey(_args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog='claudeplay', description='local mcp servers as one claude.ai connector')
-    parser.add_argument('--config', help=r'path to config.toml (default: CLAUDEPLAY_CONFIG, else %%LOCALAPPDATA%%\claudeplay\config.toml)')
+    parser.add_argument('--config', help='path to config.yaml (default: config.yaml in CLAUDEPLAY_HOME, else ~/.claudeplay); toolkit.yaml is read from the same folder')
     sub = parser.add_subparsers(dest='command', required=True)
 
     serve = sub.add_parser('serve', help='run the gateway in the foreground')
@@ -127,7 +138,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser('uninstall', help='stop starting the tray at logon').set_defaults(func=cmd_uninstall)
     sub.add_parser('status', help='show the gateway status').set_defaults(func=cmd_status)
 
-    check = sub.add_parser('check', help='validate the config')
+    check = sub.add_parser('check', help='validate config.yaml and toolkit.yaml')
     check.set_defaults(func=cmd_check)
     genkey = sub.add_parser('genkey', help='print a random signing key')
     genkey.set_defaults(func=cmd_genkey)

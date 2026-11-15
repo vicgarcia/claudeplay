@@ -1,0 +1,144 @@
+# claudeplay toolkit: copy to ~/.claudeplay/toolkit.yaml (the folder of config.yaml) and edit.
+# it says which of each server's tools claude sees, and what to change about them. it holds no secrets,
+# but ids such as task list ids are specific to your account, so the copy stays out of the repo.
+#
+# by default a tool is passed through exactly as its backend describes it: the same name, description,
+# argument descriptions and annotations, and the backend's own server instructions. this file only picks
+# which tools are exposed and adds to or replaces the text where the backend's doesn't fit your setup.
+# every server named here must be in config.yaml; a server with nothing listed exposes nothing. a tool a
+# server does not expose is hidden, and so are its prompts and resources. `claudeplay check` validates this
+# file; unknown keys are errors.
+#
+# per server:
+#   expose_all           true to expose every tool the backend has, unchanged, under its own name; the
+#                        tools listed below are then changes to some of them. new backend tools appear
+#                        on their own, so use it for backends you trust to add only safe tools
+#   instructions         replaces the backend's own server instructions ('' sends none)
+#   instructions_append  added after the backend's instructions (or the replacement)
+#   tools                the tools to expose, in the order claude sees them
+#
+# per tool:
+#   source              the backend's own tool name (required)
+#   name                the name claude sees; leave it out to keep the backend's name. rename only when
+#                       the backend's text doesn't refer to its tools by name, since claude would be
+#                       told to call tools by names it can't see
+#   description         replaces the backend's description
+#   description_append  added after the backend's description (or the replacement)
+#   read_only, destructive, open_world
+#                       annotations that tell claude whether a tool only reads, can overwrite or delete
+#                       existing data, or reaches beyond your own data. left out, the backend's are used,
+#                       and many backends have none, in which case claude may ask before using the tool
+#   args                argument name -> description replacing the backend's
+#   hide                arguments claude cannot see or set; they stay at the backend's default, so they
+#                       must be optional
+#   fixed               arguments claude cannot see or set, always sent with these values
+#   defaults            arguments claude can see, with a different default from the backend's
+# an argument named in args, hide, fixed or defaults that the backend does not take marks the server
+# failed when the gateway starts, naming the tool and argument. so does a listed tool the backend lacks.
+# YAML anchors (&name, *name) avoid repeating a value.
+
+# sent once when claude connects: ideas that span servers. each enabled server adds its own after it.
+instructions: |
+  claudeplay is a personal productivity toolkit over the user's own data.
+  get_current_timestamp gives the current date and time; use it rather than your own sense of the date.
+
+servers:
+  # your notes. obsidian-mcp's own tools and instructions are passed through as they are
+  obsidian:
+    expose_all: true
+    instructions_append: |
+      projects are folders of notes for ongoing work. list_project_content gives the paths that read_file and write_file take.
+      the wiki is a set of standalone articles. list_wiki gives the paths that read_file takes.
+      when the user asks for something to be documented, add it to the journal and to a project file, reading an existing file first.
+    # expose_all passes the tools through; these say which of them only read or overwrite, since the backend doesn't
+    tools:
+      - {source: get_todays_date, read_only: true}
+      - {source: list_journal_entries_by_year_and_month, read_only: true}
+      - {source: read_journal_entry, read_only: true}
+      - {source: list_projects, read_only: true}
+      - {source: list_project_content, read_only: true}
+      - {source: list_wiki, read_only: true}
+      - {source: read_file, read_only: true}
+      - {source: write_journal_entry, destructive: true}
+      - {source: write_file, destructive: true}
+
+  # microsoft to do. the list ids are specific to your account: get them from get_lists, and replace the
+  # placeholders below. only the tools listed are exposed, so nothing that deletes is
+  todo:
+    instructions_append: |
+      the user's main lists are Tasks and Chores. get_lists already gives the ids of the commonly used lists in its description, so calling it is only needed for other lists.
+    tools:
+      - source: get_lists
+        read_only: true
+        description_append: >-
+          Commonly used lists and their ids: Tasks = <Tasks id>; Chores = <Chores id>; Grocery = <Grocery id>.
+          The user has other lists too, which only this tool can find.
+      - source: get_tasks
+        read_only: true
+      - source: get_tasks_due_today
+        read_only: true
+        description_append: Checks only the user's main lists, Tasks and Chores.
+        fixed: {list_ids: &main [<Tasks id>, <Chores id>]}
+      - source: get_tasks_by_completed_date_range
+        read_only: true
+        description_append: Checks the user's main lists unless given list_ids.
+        args: {list_ids: 'the list ids to check, from get_lists; the main lists if left out'}
+        defaults: {list_ids: *main}
+      - source: create_task
+      - source: update_task
+        destructive: true
+      - source: complete_task
+      - source: get_steps
+        read_only: true
+      - source: create_step
+      - source: update_step
+        destructive: true
+      - source: complete_step
+
+  # bookmarks
+  pinboard:
+    instructions_append: |
+      bookmarks are private by default: always pass private=true to add_bookmark unless the user asks for a public bookmark.
+      when the user asks about their bookmarks, do not read the whole list back: share a few high-value examples, then answer questions from the rest.
+    tools:
+      - source: get_bookmarks
+        read_only: true
+        defaults: {limit: 50}
+      - source: add_bookmark
+      - source: update_bookmark
+        destructive: true
+
+  # a server whose own names and text don't suit you can be renamed and described in full, as here: windows-mcp
+  # calls its tools FileSystem and PowerShell and doesn't know your laptop is locked and unattended
+  # this laptop: files and a shell, as you
+  windows:
+    instructions: |
+      the pc tools act on the user's windows laptop as the user. it is usually locked and unattended, so nothing with a window or a prompt will work.
+    tools:
+      - source: FileSystem
+        name: pc_files
+        description: >-
+          Read, write, copy, move, delete, list, search or get info on files on the user's laptop.
+        destructive: true
+        args:
+          mode: 'one of read, write, copy, move, delete, list, search, info'
+          path: 'absolute windows path, starting from the drive letter'
+          destination: 'for copy and move, the absolute path to copy or move to'
+          content: 'for write, the text to write'
+          pattern: 'for search and list, a filename pattern such as "*.pdf"; it matches names, not file contents'
+          recursive: 'for search and list, true to include subfolders; for delete, true is required to delete a folder with its contents'
+          append: 'for write, true to add to the end of the file instead of replacing it'
+          overwrite: 'for copy and move, true to replace anything already at the destination'
+          offset: 'for read, the line to start from, counting from 1'
+          limit: 'for read, how many lines to return'
+          show_hidden: 'for list, true to include hidden files'
+        hide: [encoding]
+      - source: PowerShell
+        name: pc_shell
+        description: >-
+          Run a PowerShell command on the user's laptop and return its output. It must finish without any
+          window or prompt.
+        open_world: true
+        args:
+          command: 'the powershell command'
+          timeout: 'seconds to wait for it'
