@@ -35,11 +35,11 @@ def cmd_serve(args: argparse.Namespace) -> int:
         if cfg.host not in LOOPBACK:
             raise config.ConfigError(f'refusing to serve without authentication on {cfg.host}; use 127.0.0.1')
         if cfg.tunnel_enabled:
-            raise config.ConfigError('refusing to serve without authentication while a [tunnel] is enabled')
+            raise config.ConfigError('refusing to serve without authentication while a tunnel is enabled')
         logging.getLogger('claudeplay').warning('serving WITHOUT authentication (local use only)')
         gateway.serve(cfg, raw=args.raw)
     else:
-        raise config.ConfigError('no [auth] section in the config; add one, or set insecure_no_auth = true under [gateway] for local use')
+        raise config.ConfigError('no auth section in the config; add one, or set insecure_no_auth: true under gateway for local use')
     return 0
 
 
@@ -109,7 +109,7 @@ def cmd_genkey(_args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog='claudeplay', description='local mcp servers as one claude.ai connector')
-    parser.add_argument('--config', help=r'path to config.toml (default: CLAUDEPLAY_CONFIG, else %%LOCALAPPDATA%%\claudeplay\config.toml)')
+    parser.add_argument('--config', help='path to config.yaml (default: config.yaml in CLAUDEPLAY_HOME, else ~/.claudeplay); toolkit.yaml is read from the same folder')
     sub = parser.add_subparsers(dest='command', required=True)
 
     serve = sub.add_parser('serve', help='run the gateway in the foreground')

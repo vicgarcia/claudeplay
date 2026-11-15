@@ -1,48 +1,65 @@
-'''the claudeplay config file (config.toml): parsing, in-place edits, optional ${ENV_VAR} expansion, paths'''
+'''the claudeplay config file (config.yaml): parsing, in-place edits, optional ${ENV_VAR} expansion, paths'''
 
+import io
+import json
 import os
 import re
 import secrets
-import tomllib
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlsplit
 
-import tomlkit
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from ruamel.yaml import YAML
+from ruamel.yaml.error import YAMLError
 
 DEFAULT_HOST = '127.0.0.1'
 DEFAULT_PORT = 8765
 # where the winget/msi install puts it
 DEFAULT_CLOUDFLARED = 'C:/Program Files (x86)/cloudflared/cloudflared.exe'
 
+CONFIG_NAME = 'config.yaml'
+TOOLKIT_NAME = 'toolkit.yaml'
+
 _ENV_REF = re.compile(r'\$\{([A-Za-z_][A-Za-z0-9_]*)\}')
 
 
 class ConfigError(Exception):
-    ''' raised for a bad config; messages name variables, never their values '''
+    ''' raised for a bad config; messages name files, keys and variables, never their values '''
 
 
-def data_dir() -> Path:
-    ''' per-user state directory (config, logs, status, token store) '''
+def home_dir() -> Path:
+    ''' where configuration and credentials live: config, toolkit, status, token store, tunnel credentials '''
     override = os.environ.get('CLAUDEPLAY_HOME')
-    if override:
-        return Path(override)
-    base = os.environ.get('LOCALAPPDATA') or str(Path.home() / '.local' / 'share')
-    return Path(base) / 'claudeplay'
+    return Path(override) if override else Path.home() / '.claudeplay'
 
 
 def logs_dir() -> Path:
-    return data_dir() / 'logs'
+    ''' where logs live, apart from the credentials so a log folder is safe to open and share '''
+    override = os.environ.get('CLAUDEPLAY_LOGS')
+    if override:
+        return Path(override)
+    base = os.environ.get('LOCALAPPDATA') or str(Path.home() / '.local' / 'share')
+    return Path(base) / 'claudeplay' / 'logs'
 
 
 def status_path() -> Path:
-    return data_dir() / 'status.json'
+    return home_dir() / 'status.json'
 
 
 def default_config_path() -> Path:
-    ''' CLAUDEPLAY_CONFIG wins, otherwise config.toml in the data dir '''
-    override = os.environ.get('CLAUDEPLAY_CONFIG')
-    return Path(override) if override else data_dir() / 'config.toml'
+    return home_dir() / CONFIG_NAME
+
+
+def toolkit_path(config_path: Path | None = None) -> Path:
+    ''' toolkit.yaml is always read from the same folder as the config it goes with '''
+    return (config_path or default_config_path()).parent / TOOLKIT_NAME
+
+
+def cloudflared_dir() -> Path:
+    return home_dir() / 'cloudflared'
 
 
 def expand(value: str, environ: dict[str, str] | None = None) -> str:
@@ -95,6 +112,8 @@ class TunnelConfig:
     name: str
     command: str = DEFAULT_CLOUDFLARED
     enabled: bool = True
+    # '' means the one credentials file in ~/.claudeplay/cloudflared
+    credentials_file: str = ''
 
 
 @dataclass(frozen=True)
@@ -113,7 +132,7 @@ class GatewayConfig:
     auth: AuthConfig | None = None
     tunnel: TunnelConfig | None = None
     tasks: TasksConfig = field(default_factory=TasksConfig)
-    # local use only: serve without authentication when there is no [auth] section
+    # local use only: serve without authentication when there is no auth section
     insecure_no_auth: bool = False
 
     @property
@@ -147,91 +166,117 @@ def resolve(server: ServerConfig, environ: dict[str, str] | None = None) -> Reso
     )
 
 
-def _parse_server(name: str, raw: dict) -> ServerConfig:
-    command = raw.get('command')
-    if not isinstance(command, str) or not command:
-        raise ConfigError(f'server {name}: command is required')
-    args = raw.get('args', [])
-    if not isinstance(args, list) or not all(isinstance(a, str) for a in args):
-        raise ConfigError(f'server {name}: args must be a list of strings')
-    env = raw.get('env', {})
-    if not isinstance(env, dict) or not all(isinstance(v, str) for v in env.values()):
-        raise ConfigError(f'server {name}: env must be a table of strings')
-    enabled = raw.get('enabled', True)
-    if not isinstance(enabled, bool):
-        raise ConfigError(f'server {name}: enabled must be true or false')
-    return ServerConfig(name=name, command=command, args=tuple(args), env=dict(env), enabled=enabled)
+class _Model(BaseModel):
+    ''' a config section: unknown keys and wrong types are errors, so a typo fails instead of being ignored '''
+    model_config = ConfigDict(extra='forbid', strict=True)
 
 
-def _parse_auth(raw: dict) -> AuthConfig:
-    ids = raw.get('allowed_user_ids', [])
-    if not isinstance(ids, list) or not all(isinstance(i, int) and not isinstance(i, bool) for i in ids):
-        raise ConfigError('auth: allowed_user_ids must be a list of numeric github user ids')
-    return AuthConfig(
-        client_id=str(raw.get('client_id', '')),
-        client_secret=str(raw.get('client_secret', '')),
-        jwt_signing_key=str(raw.get('jwt_signing_key', '')),
-        allowed_user_ids=tuple(ids),
-    )
+class _GatewayModel(_Model):
+    host: str = DEFAULT_HOST
+    port: int = Field(DEFAULT_PORT, ge=1, le=65535)
+    public_base_url: str = ''
+    insecure_no_auth: bool = False
 
 
-def _parse_tunnel(raw: dict) -> TunnelConfig:
-    name = raw.get('name')
-    if not isinstance(name, str) or not name:
-        raise ConfigError('tunnel: name is required (the name given to `cloudflared tunnel create`)')
-    command = raw.get('command', DEFAULT_CLOUDFLARED)
-    if not isinstance(command, str) or not command:
-        raise ConfigError('tunnel: command must be the path to cloudflared.exe')
-    enabled = raw.get('enabled', True)
-    if not isinstance(enabled, bool):
-        raise ConfigError('tunnel: enabled must be true or false')
-    return TunnelConfig(name=name, command=command, enabled=enabled)
+class _AuthModel(_Model):
+    client_id: str = ''
+    client_secret: str = ''
+    jwt_signing_key: str = ''
+    allowed_user_ids: list[int] = []
 
 
-def _parse_tasks(raw: dict) -> TasksConfig:
-    lists = raw.get('common_lists', {})
-    if not isinstance(lists, dict) or not all(isinstance(v, str) and v for v in lists.values()):
-        raise ConfigError('tasks: common_lists must be a table of list name to list id')
-    due_today = raw.get('due_today', [])
-    if not isinstance(due_today, list) or not all(isinstance(n, str) for n in due_today):
-        raise ConfigError('tasks: due_today must be a list of list names')
-    unknown = [n for n in due_today if n not in lists]
-    if unknown:
-        raise ConfigError(f'tasks: due_today names lists missing from common_lists: {", ".join(unknown)}')
-    return TasksConfig(common_lists=dict(lists), due_today=tuple(due_today))
+class _TunnelModel(_Model):
+    name: str = Field(min_length=1)
+    command: str = Field(DEFAULT_CLOUDFLARED, min_length=1)
+    enabled: bool = True
+    credentials_file: str = ''
 
 
-def parse(text: str) -> GatewayConfig:
+class _ServerModel(_Model):
+    command: str = Field(min_length=1)
+    args: list[str] = []
+    env: dict[str, str] = {}
+    enabled: bool = True
+
+
+class _TasksModel(_Model):
+    common_lists: dict[str, str] = {}
+    due_today: list[str] = []
+
+
+class _ConfigModel(_Model):
+    gateway: _GatewayModel = _GatewayModel()
+    auth: _AuthModel | None = None
+    tunnel: _TunnelModel | None = None
+    servers: dict[str, _ServerModel] = {}
+    tasks: _TasksModel = _TasksModel()
+
+
+def _yaml() -> YAML:
+    ''' a round-trip parser: edits keep comments, key order and quoting '''
+    yaml = YAML(typ='rt')
+    yaml.preserve_quotes = True
+    # never re-wrap long values
+    yaml.width = 1 << 20
+    return yaml
+
+
+def load_yaml(text: str, name: str) -> Any:
+    ''' parse yaml text; a syntax error names the file and line, never the text (it may hold secrets) '''
     try:
-        raw = tomllib.loads(text)
-    except tomllib.TOMLDecodeError as e:
-        raise ConfigError(f'invalid toml: {e}') from None
+        return _yaml().load(text)
+    except YAMLError as e:
+        mark = getattr(e, 'problem_mark', None)
+        where = f' line {mark.line + 1}' if mark is not None else ''
+        raise ConfigError(f'{name}:{where}: invalid yaml ({getattr(e, "problem", None) or "syntax error"})') from None
 
-    gw = raw.get('gateway', {})
-    host = gw.get('host', DEFAULT_HOST)
-    port = gw.get('port', DEFAULT_PORT)
-    insecure_no_auth = gw.get('insecure_no_auth', False)
-    if not isinstance(insecure_no_auth, bool):
-        raise ConfigError('gateway: insecure_no_auth must be true or false')
-    if not isinstance(port, int) or isinstance(port, bool) or not 1 <= port <= 65535:
-        raise ConfigError('gateway: port must be an integer between 1 and 65535')
 
-    servers_raw = raw.get('servers', {})
-    if not isinstance(servers_raw, dict):
-        raise ConfigError('servers must be a table of tables, e.g. [servers.obsidian]')
-    servers = tuple(_parse_server(name, s) for name, s in servers_raw.items())
+def validation_error(name: str, e: ValidationError) -> ConfigError:
+    ''' one line per problem: file, key path and what is wrong; pydantic's input values are left out '''
+    lines = []
+    for err in e.errors(include_url=False, include_context=False, include_input=False):
+        path = '.'.join(str(p) for p in err['loc']) or '(top level)'
+        lines.append(f'{name}: {path}: {err["msg"]}')
+    return ConfigError('\n'.join(lines))
 
-    auth = _parse_auth(raw['auth']) if 'auth' in raw else None
-    tunnel = _parse_tunnel(raw['tunnel']) if 'tunnel' in raw else None
+
+def parse(text: str, name: str = CONFIG_NAME) -> GatewayConfig:
+    raw = load_yaml(text, name)
+    if raw is None:
+        raw = {}
+    if not isinstance(raw, dict):
+        raise ConfigError(f'{name}: the top level must be a mapping')
+    try:
+        model = _ConfigModel.model_validate(raw)
+    except ValidationError as e:
+        raise validation_error(name, e) from None
+
+    tasks = model.tasks
+    unknown = [n for n in tasks.due_today if n not in tasks.common_lists]
+    if unknown:
+        raise ConfigError(f'{name}: tasks.due_today: names lists missing from common_lists: {", ".join(unknown)}')
     return GatewayConfig(
-        host=host,
-        port=port,
-        public_base_url=gw.get('public_base_url', ''),
-        insecure_no_auth=insecure_no_auth,
-        servers=servers,
-        auth=auth,
-        tunnel=tunnel,
-        tasks=_parse_tasks(raw.get('tasks', {})),
+        host=model.gateway.host,
+        port=model.gateway.port,
+        public_base_url=model.gateway.public_base_url,
+        insecure_no_auth=model.gateway.insecure_no_auth,
+        servers=tuple(
+            ServerConfig(name=n, command=m.command, args=tuple(m.args), env=dict(m.env), enabled=m.enabled)
+            for n, m in model.servers.items()
+        ),
+        auth=None if model.auth is None else AuthConfig(
+            client_id=model.auth.client_id,
+            client_secret=model.auth.client_secret,
+            jwt_signing_key=model.auth.jwt_signing_key,
+            allowed_user_ids=tuple(model.auth.allowed_user_ids),
+        ),
+        tunnel=None if model.tunnel is None else TunnelConfig(
+            name=model.tunnel.name,
+            command=model.tunnel.command,
+            enabled=model.tunnel.enabled,
+            credentials_file=model.tunnel.credentials_file,
+        ),
+        tasks=TasksConfig(common_lists=dict(tasks.common_lists), due_today=tuple(tasks.due_today)),
     )
 
 
@@ -241,35 +286,49 @@ def load(path: Path | None = None) -> GatewayConfig:
         text = path.read_text(encoding='utf-8')
     except FileNotFoundError:
         raise ConfigError(f'config not found: {path}') from None
-    return parse(text)
+    return parse(text, path.name)
 
 
 def _edit(path: Path, change) -> None:
-    ''' apply change(document) to the config file, keeping its comments and formatting '''
+    ''' apply change(document) to the config file, keeping its comments, formatting and line endings '''
     with open(path, encoding='utf-8', newline='') as f:
         text = f.read()
     newline = '\r\n' if '\r\n' in text else '\n'
-    doc = tomlkit.parse(text.replace('\r\n', '\n'))
+    doc = load_yaml(text.replace('\r\n', '\n'), path.name)
+    if doc is None:
+        doc = {}
     change(doc)
+    out = io.StringIO()
+    _yaml().dump(doc, out)
     tmp = path.with_suffix('.tmp')
     # write the file back with the line endings it had
     with open(tmp, 'w', encoding='utf-8', newline='') as f:
-        f.write(tomlkit.dumps(doc).replace('\n', newline))
+        f.write(out.getvalue().replace('\n', newline))
     os.replace(tmp, path)
+
+
+def _set_value(mapping, key: str, value: bool) -> None:
+    ''' set a scalar and keep its end-of-line comment where it was, relative to the value '''
+    old = mapping.get(key)
+    mapping[key] = value
+    comment = getattr(mapping, 'ca', None) and mapping.ca.items.get(key)
+    if comment and len(comment) > 2 and comment[2] is not None and isinstance(old, bool):
+        # ruamel pins a comment to its column, so a longer or shorter value would shift it
+        comment[2].column += len(str(value).lower()) - len(str(old).lower())
 
 
 def set_enabled(path: Path, name: str, enabled: bool) -> None:
     ''' flip a server's enabled flag in the config file (used by the tray toggles) '''
     def change(doc):
-        servers = doc.get('servers', {})
+        servers = doc.get('servers') or {}
         if name not in servers:
             raise ConfigError(f'server {name} is not in the config')
-        servers[name]['enabled'] = enabled
+        _set_value(servers[name], 'enabled', enabled)
     _edit(path, change)
 
 
 def ensure_signing_key(path: Path) -> bool:
-    ''' write a random jwt_signing_key into [auth] if it is missing or empty; returns True if one was written '''
+    ''' write a random jwt_signing_key into the auth section if it is missing or empty; returns True if one was written '''
     written = False
 
     def change(doc):
@@ -282,6 +341,34 @@ def ensure_signing_key(path: Path) -> bool:
 
     _edit(path, change)
     return written
+
+
+def tunnel_credentials(tunnel: TunnelConfig) -> Path:
+    ''' the tunnel credentials file: the configured one, else the only .json in ~/.claudeplay/cloudflared '''
+    if tunnel.credentials_file:
+        path = Path(expand(tunnel.credentials_file))
+        if not path.is_file():
+            raise ConfigError('tunnel: credentials_file does not exist')
+        return path
+    found = sorted(cloudflared_dir().glob('*.json'))
+    if not found:
+        raise ConfigError(f'tunnel: no credentials file (<tunnel-id>.json) in {cloudflared_dir()}')
+    if len(found) > 1:
+        raise ConfigError(f'tunnel: more than one .json in {cloudflared_dir()}; set tunnel.credentials_file')
+    return found[0]
+
+
+def tunnel_id(credentials: Path) -> str:
+    ''' the tunnel's uuid: the file's name if it is one (cloudflared names it that), else its TunnelID field '''
+    try:
+        return str(uuid.UUID(credentials.stem))
+    except ValueError:
+        pass
+    try:
+        found = json.loads(credentials.read_text(encoding='utf-8'))['TunnelID']
+        return str(uuid.UUID(str(found)))
+    except (OSError, ValueError, KeyError, TypeError):
+        raise ConfigError('tunnel: cannot find the tunnel id in the credentials file') from None
 
 
 MASK = '********'
@@ -300,6 +387,7 @@ def describe(cfg: GatewayConfig) -> list[str]:
         lines.append('tunnel:   none (local only)')
     else:
         lines.append(f'tunnel:   {cfg.tunnel.name} {"enabled" if cfg.tunnel.enabled else "disabled"}, {cfg.tunnel.command}')
+        lines.append(f'          credentials {cfg.tunnel.credentials_file or str(cloudflared_dir()) + " (default)"}')
     if cfg.tasks.common_lists:
         lines.append(f'tasks:    common lists {", ".join(cfg.tasks.common_lists)}; due today {", ".join(cfg.tasks.due_today) or "(off)"}')
     for s in cfg.servers:

@@ -115,7 +115,7 @@ def build(
         base_url=base_url,
         redirect_path='/auth/callback',
         jwt_signing_key=signing_key,
-        client_storage=token_store(store_dir or config.data_dir() / 'oauth', signing_key),
+        client_storage=token_store(store_dir or config.home_dir() / 'oauth', signing_key),
         valid_scopes=GITHUB_SCOPES,
         require_authorization_consent=True,
     )

@@ -47,8 +47,8 @@ class StubSupervisor:
 
 @pytest.fixture
 def app(tmp_path):
-    path = tmp_path / 'config.toml'
-    path.write_text("[servers.obsidian]\ncommand = 'o.exe'\n\n[servers.todo]\ncommand = 't.exe'\nenabled = false\n")
+    path = tmp_path / 'config.yaml'
+    path.write_text("servers:\n  obsidian:\n    command: o.exe\n  todo:\n    command: t.exe\n    enabled: false\n")
     sup = StubSupervisor()
     sup.cfg = None
     return tray.TrayApp(sup, config.load(path), path)
@@ -124,13 +124,13 @@ def test_copy_url_uses_the_connector_endpoint(app, monkeypatch):
     assert copied == ['http://localhost:8765/mcp']
 
 
-def test_open_config_folder_opens_the_parent_of_the_logs_folder(app, monkeypatch, tmp_path):
-    monkeypatch.setenv('CLAUDEPLAY_HOME', str(tmp_path / 'home'))
+def test_open_config_folder_and_open_logs_folder_open_different_folders(app, monkeypatch, isolated_home, isolated_logs):
     opened = []
     monkeypatch.setattr(tray.os, 'startfile', opened.append, raising=False)
     app.open_config_folder()
-    assert opened == [config.logs_dir().parent]
-    assert opened[0].is_dir()
+    app.open_logs_folder()
+    assert opened == [isolated_home, isolated_logs]
+    assert isolated_home != isolated_logs and all(p.is_dir() for p in opened)
 
 
 def test_single_instance_guard():

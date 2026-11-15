@@ -6,4 +6,5 @@ dist/
 .venv
 .pytest*
 .claude
-config.toml
+config.yaml
+toolkit.yaml

@@ -105,6 +105,7 @@ class TrayApp:
             pystray.Menu.SEPARATOR,
             pystray.MenuItem('Copy connector URL', lambda _i, _m: self.copy_url()),
             pystray.MenuItem('Open config folder', lambda _i, _m: self.open_config_folder()),
+            pystray.MenuItem('Open logs folder', lambda _i, _m: self.open_logs_folder()),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem('Quit', lambda _i, _m: self.quit()),
         )
@@ -161,8 +162,12 @@ class TrayApp:
         winutil.copy_to_clipboard(self.cfg.endpoint_url)
 
     def open_config_folder(self) -> None:
-        config.data_dir().mkdir(parents=True, exist_ok=True)
-        os.startfile(config.data_dir())
+        config.home_dir().mkdir(parents=True, exist_ok=True)
+        os.startfile(config.home_dir())
+
+    def open_logs_folder(self) -> None:
+        config.logs_dir().mkdir(parents=True, exist_ok=True)
+        os.startfile(config.logs_dir())
 
     def quit(self) -> None:
         self.sup.stop()
