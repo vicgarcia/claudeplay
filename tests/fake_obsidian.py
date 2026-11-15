@@ -14,7 +14,7 @@ TODAY = '2026-10-29'
 
 
 @mcp.tool()
-def get_current_timestamp() -> dict:
+def get_todays_date() -> dict:
     ''' not in the catalog: claudeplay has its own clock '''
     return {'date': TODAY}
 
@@ -34,7 +34,7 @@ def read_journal_entry(date: str) -> dict:
 def append_to_journal_entry(text: str, date: str | None = None) -> dict:
     day = date or TODAY
     created = day not in journal
-    journal[day] = (journal.get(day, '') + '\n\n' + text).strip()
+    journal[day] = journal.get(day, '') + text
     return {'success': True, 'path': f'journal/{day}.md', 'created': created}
 
 
@@ -42,8 +42,16 @@ def append_to_journal_entry(text: str, date: str | None = None) -> dict:
 def prepend_to_journal_entry(text: str, date: str | None = None) -> dict:
     day = date or TODAY
     created = day not in journal
-    journal[day] = (text + '\n\n' + journal.get(day, '')).strip()
+    journal[day] = text + journal.get(day, '')
     return {'success': True, 'path': f'journal/{day}.md', 'created': created}
+
+
+@mcp.tool()
+def add_note_to_journal_entry(text: str, date: str | None = None) -> dict:
+    day = date or TODAY
+    created = day not in journal
+    journal[day] = (journal.get(day) or '\n\n# Daily Notes\n') + f'{text}\n{TODAY} 09:00\n\n'
+    return {'success': True, 'path': f'journal/{day}.md', 'created': created, 'timestamp': f'{TODAY} 09:00'}
 
 
 @mcp.tool()

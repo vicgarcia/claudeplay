@@ -6,11 +6,12 @@ Claude doesn't see the backends. It sees one server called `claudeplay` with a s
 
 | Tool | What it does | Backend tool |
 |---|---|---|
-| `get_current_timestamp` | The current date and time in every common form, in the laptop's time zone, with the same fields as obsidian-mcp's `get_current_timestamp` | built into claudeplay |
+| `get_current_timestamp` | The current date and time in every common form, in the laptop's time zone | built into claudeplay |
 | `journal_list_month` | Which days in a month have an entry | obsidian `list_journal_entries_by_year_and_month` |
 | `journal_read` | Reads one day's entry | obsidian `read_journal_entry` |
-| `journal_append` | Adds text to the end of a day's entry, today by default | obsidian `append_to_journal_entry` |
-| `journal_prepend` | Adds an entry at the top of a day's entry, below any frontmatter, today by default | obsidian `prepend_to_journal_entry` |
+| `journal_add_note` | Adds a note to the end of a day's `# Daily Notes` section, stamped with the time, today by default. The usual way to write to the journal | obsidian `add_note_to_journal_entry` |
+| `journal_append` | Writes text at the end of a day's entry exactly as given, today by default | obsidian `append_to_journal_entry` |
+| `journal_prepend` | Writes text at the top of a day's entry exactly as given, below any frontmatter, today by default. Used for sections such as a daily recap | obsidian `prepend_to_journal_entry` |
 | `projects_list` | Lists projects | obsidian `list_projects` |
 | `projects_files` | Lists the files in a project | obsidian `list_project_content` |
 | `projects_create` | Creates an empty project | obsidian `create_project` |

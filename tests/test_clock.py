@@ -16,7 +16,7 @@ class Frozen(datetime):
         return self.replace(tzinfo=timezone(timedelta(hours=-5), 'Eastern Standard Time'))
 
 
-def test_timestamp_has_the_same_fields_as_obsidian(monkeypatch):
+def test_timestamp_has_every_field(monkeypatch):
     monkeypatch.setattr(clock, 'datetime', Frozen)
     assert clock.get_current_timestamp() == {
         'iso': '2026-11-01T23:59:58-05:00',

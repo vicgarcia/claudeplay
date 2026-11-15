@@ -22,7 +22,7 @@ It follows the laptop's clock and time zone, which may differ from where you are
 
 | Tool | What it does | Arguments |
 |---|---|---|
-| `get_current_timestamp` | The current date and time in every common form: `YYYY-MM-DD`, 24-hour and 12-hour time, day of the week, a spoken-style date, ISO 8601 local and UTC, unix seconds, ISO week, time zone name and UTC offset. The same fields as obsidian-mcp's tool of the same name | None |
+| `get_current_timestamp` | The current date and time in every common form: `YYYY-MM-DD`, 24-hour and 12-hour time, day of the week, a spoken-style date, ISO 8601 local and UTC, unix seconds, ISO week, time zone name and UTC offset. | None |
 
 ### Journal
 
@@ -32,8 +32,9 @@ Daily entries in the Obsidian vault, one per day. Backend: obsidian-mcp.
 |---|---|---|
 | `journal_list_month` | Lists which days in a month have an entry | `year`, `month` |
 | `journal_read` | Reads one day's entry, and says so if there isn't one | `date` |
-| `journal_append` | Adds text to the end of a day's entry, today by default, creating it if needed. Never changes what's already there | `text`, `date` |
-| `journal_prepend` | Adds an entry at the top of a day's entry, below any frontmatter, today by default, creating it if needed. Never changes what's already there | `text`, `date` |
+| `journal_add_note` | Adds a note to the end of a day's `# Daily Notes` section, today by default, creating the entry and section if needed. The backend stamps it with the time. The usual way to write to the journal | `text`, `date` |
+| `journal_append` | Writes text at the end of a day's entry exactly as given, today by default, creating it if needed. Never changes what's already there | `text`, `date` |
+| `journal_prepend` | Writes text at the top of a day's entry exactly as given, below any frontmatter, today by default, creating it if needed. Used for sections such as a daily recap. Never changes what's already there | `text`, `date` |
 
 ### Projects
 

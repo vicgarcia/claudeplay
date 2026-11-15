@@ -8,7 +8,7 @@ NAME = 'clock'
 
 
 def format_timestamp(now: datetime) -> dict:
-    ''' a local datetime in every form the timestamp tool returns, the same fields as obsidian-mcp's '''
+    ''' a local datetime in every form the timestamp tool returns '''
     offset = now.utcoffset()
     if offset is None:
         utc_offset = ''

@@ -9,7 +9,7 @@ from fastmcp import Client
 from claudeplay import config, gateway, toolkit
 
 FAKE_OBSIDIAN = str(Path(__file__).parent / 'fake_obsidian.py')
-EXPECTED = ['get_current_timestamp', 'journal_list_month', 'journal_read', 'journal_append', 'journal_prepend', 'projects_list', 'projects_files',
+EXPECTED = ['get_current_timestamp', 'journal_list_month', 'journal_read', 'journal_add_note', 'journal_append', 'journal_prepend', 'projects_list', 'projects_files',
             'projects_create', 'projects_read', 'projects_write', 'wiki_list', 'wiki_read', 'web_fetch']
 # the tools built into the gateway, there with no backends at all
 BUILT_IN = ['get_current_timestamp', 'web_fetch']
@@ -58,27 +58,29 @@ def test_descriptions_annotations_and_argument_docs_come_from_the_catalog():
 def test_calls_route_to_the_backend():
     async def steps(client):
         month = payload(await client.call_tool('journal_list_month', {'year': '2026', 'month': '10'}))
-        appended = payload(await client.call_tool('journal_append', {'text': 'saw a heron'}))
-        prepended = payload(await client.call_tool('journal_prepend', {'text': '### morning'}))
+        noted = payload(await client.call_tool('journal_add_note', {'text': '### heron\nby the river'}))
+        prepended = payload(await client.call_tool('journal_prepend', {'text': '# Daily Recap\nquiet\n'}))
+        appended = payload(await client.call_tool('journal_append', {'text': 'ps'}))
         today = payload(await client.call_tool('journal_read', {'date': '2026-10-29'}))
-        await client.call_tool('journal_append', {'text': 'and a swim', 'date': '2026-10-01'})
-        await client.call_tool('journal_prepend', {'text': '### the day', 'date': '2026-10-01'})
+        await client.call_tool('journal_append', {'text': ' and a swim', 'date': '2026-10-01'})
+        await client.call_tool('journal_prepend', {'text': '# the day\n', 'date': '2026-10-01'})
         earlier = payload(await client.call_tool('journal_read', {'date': '2026-10-01'}))
-        return month, appended, prepended, today, earlier
+        return month, noted, prepended, appended, today, earlier
 
-    month, appended, prepended, today, earlier = run(config.GatewayConfig(servers=(obsidian(),)), steps)
+    month, noted, prepended, appended, today, earlier = run(config.GatewayConfig(servers=(obsidian(),)), steps)
     assert [e['name'] for e in month] == ['2026-10-01.md']
-    assert appended['created'] is True and prepended['created'] is False
-    assert today == {'path': 'journal/2026-10-29.md', 'exists': True, 'content': '### morning\n\nsaw a heron'}
-    assert earlier['content'] == '### the day\n\nwent for a run\n\nand a swim'
+    assert noted['created'] is True and noted['timestamp'] == '2026-10-29 09:00'
+    assert prepended['created'] is False and appended['created'] is False
+    assert today['content'] == '# Daily Recap\nquiet\n\n\n# Daily Notes\n### heron\nby the river\n2026-10-29 09:00\n\nps'
+    assert earlier['content'] == '# the day\nwent for a run and a swim'
 
 
-def test_journal_append_and_prepend_take_text_and_an_optional_date():
+def test_journal_writes_take_text_and_an_optional_date():
     async def steps(client):
         return {t.name: t for t in await client.list_tools()}
 
     tools = run(config.GatewayConfig(servers=(obsidian(),)), steps)
-    for name in ('journal_append', 'journal_prepend'):
+    for name in ('journal_add_note', 'journal_append', 'journal_prepend'):
         schema = tools[name].input_schema
         assert list(schema['properties']) == ['text', 'date'] and schema['required'] == ['text']
         assert tools[name].annotations.destructive_hint is False
@@ -294,7 +296,7 @@ def test_without_task_config_nothing_account_specific_is_published():
 def test_instructions_cover_the_common_workflows():
     assert 'narrative' not in toolkit.INSTRUCTIONS
     workflows = toolkit.INSTRUCTIONS.split('common workflows:')[1]
-    for tool in ('tasks_get_due_today', 'tasks_get_completed_between', 'journal_append', 'journal_read', 'projects_write', 'web_fetch'):
+    for tool in ('tasks_get_due_today', 'tasks_get_completed_between', 'journal_add_note', 'journal_read', 'projects_write', 'web_fetch'):
         assert tool in workflows
     assert 'bookmarks' in workflows
 
