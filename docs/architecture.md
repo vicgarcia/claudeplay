@@ -24,9 +24,10 @@ Because the tray runs inside a Windows job object, killing or crashing it also t
 | Module | Responsibility |
 |---|---|
 | `cli.py` | Commands. Decides whether the gateway may run without auth |
-| `config.py` | Parses `config.toml`, edits it in place, masks secrets for display |
+| `config.py` | Paths, parses and validates `config.yaml` (pydantic, unknown keys are errors), edits it in place (ruamel.yaml), masks secrets for display |
 | `gateway.py` | Builds the FastMCP server, mounts the backends, checks their health, logs tool calls |
-| `toolkit.py` | The catalog and the transform that presents it |
+| `toolkit.py` | Loads and validates `toolkit.yaml`, checks it against what a server really lists, and the transform that presents the tools |
+| `clock.py` | The one built-in tool, `get_current_timestamp` |
 | `auth.py` | The OAuth proxy, allow-list and encrypted token store |
 | `supervisor.py` | Starts, stops and watches the gateway and tunnel |
 | `tray.py` | Icon and menu |
@@ -38,13 +39,13 @@ Because the tray runs inside a Windows job object, killing or crashing it also t
 
 Say you ask Claude for yesterday's journal entry:
 
-1. **Claude's servers send a request.** It's a `POST` to `https://<hostname>/mcp` with a bearer token, calling `journal_read`.
+1. **Claude's servers send a request.** It's a `POST` to `https://<hostname>/mcp` with a bearer token, calling a tool such as `read_journal_entry`.
 2. **Cloudflare forwards it.** Cloudflare handles HTTPS at its edge and passes the request down the tunnel. `cloudflared` opened that tunnel from the laptop, so no inbound port is open.
 3. **The gateway checks the Host and Origin headers.** Anything other than localhost or the public hostname gets a 421 or 403.
 4. **The gateway checks the token.** No valid token gets a 401, and a token for anyone not on the allow-list is rejected.
-5. **The catalog resolves the name.** `journal_read` maps to `obsidian_read_journal_entry`. A name not in the catalog is unknown, even if the backend has it.
+5. **The toolkit resolves the name.** `read_journal_entry` maps to the mounted tool `obsidian_read_journal_entry`. A name that `toolkit.yaml` doesn't expose is unknown, even if the backend has it.
 6. **The proxy calls the backend.** It sends the call over stdio to `obsidian-mcp.exe`, which reads the file.
-7. **The result goes back the same way.** The log records `tool=journal_read ms=12 result=ok`, without the arguments or content.
+7. **The result goes back the same way.** The log records `tool=read_journal_entry ms=12 result=ok`, without the arguments or content.
 
 ## The gateway
 
@@ -56,12 +57,16 @@ gw.add_provider(proxy, namespace=server.name)
 ```
 
 - **`mode='legacy'` is required.** FastMCP 4 clients otherwise start with a `server/discover` handshake, which MCP 1.x backends reject, and the proxy then silently lists zero tools.
-- **Namespacing gives stable names.** Every backend tool becomes `<server>_<tool>`, no matter which other servers are enabled. The catalog relies on this.
+- **Namespacing gives stable names.** Every backend tool becomes `<server>_<tool>` inside the gateway, no matter which other servers are enabled. The toolkit relies on this; Claude sees the names without the prefix.
 - **Failures stay contained.** A backend that won't start is marked failed, and the others keep working.
 
 ### Health checks
 
 On startup, the gateway connects to each backend and lists its tools, with a 30-second limit. Zero tools counts as a failure, because the proxy swallows backend errors and returns an empty list.
+
+The same probe checks `toolkit.yaml` against the backend: a listed tool the backend lacks, an argument that tool doesn't take, or an unlisted tool exposed under a name already in use marks the server failed, naming the tool or argument. It also reads the backend's own server instructions.
+
+Server instructions are set on the FastMCP server after each probe, not when it is built, because a backend's instructions are only known once it has started. Sessions that start from then on get them.
 
 The results go to `status.json`, written atomically. The tray reads that file, which means the gateway needs no health endpoint on its public port. Each run writes a run id that the supervisor generated, so a stale file from an earlier run can't be mistaken for the current state. It doesn't use the process id, because a uv environment's `python.exe` is a launcher with a different id from the real interpreter.
 
@@ -69,8 +74,8 @@ The results go to `status.json`, written atomically. The tray reads that file, w
 
 `toolkit.Catalog` is a FastMCP `Transform` applied to the whole server. It has two jobs:
 
-- **Listing:** keeps only catalogued tools, then uses `Tool.from_tool` to apply the new name, description, annotations and argument changes.
-- **Calling:** maps the public name back to the backend name. Backend names fail here as unknown, so hiding a tool also makes it uncallable.
+- **Listing:** keeps the listed tools, and every tool of an `expose_all` server, then uses `Tool.from_tool` to apply whatever `toolkit.yaml` sets: a new name or description, an appended description, annotations (layered over the backend's own), and argument changes. Anything not set passes through.
+- **Calling:** maps the public name back to the mounted name. A backend's own prefixed names fail here as unknown, so hiding a tool also makes it uncallable.
 
 It also returns nothing for resources and prompts. See [Toolkit](toolkit.md) for how to use it.
 
@@ -103,10 +108,13 @@ Claude                    gateway (OAuthProxy)               GitHub
 The supervisor runs:
 
 ```
-cloudflared tunnel --no-autoupdate --logfile <logs>\cloudflared.log run --url http://127.0.0.1:8765 claudeplay
+cloudflared tunnel --no-autoupdate run --credentials-file ~/.claudeplay/cloudflared/<tunnel-id>.json --url http://127.0.0.1:8765 <tunnel-id>
 ```
 
-Passing `--url` means there's no second config file. The tunnel settings are all in the `[tunnel]` section, and only the credentials live in `~/.cloudflared`.
+Passing `--url` means there's no second config file. The tunnel settings are all in the `tunnel` section of `config.yaml`, and the credentials are in `~/.claudeplay/cloudflared`.
+
+- **Run by id.** cloudflared documents that a tunnel identified by its id needs only the credentials file, while looking a tunnel up by name needs the account certificate (`cert.pem`). claudeplay takes the id from the credentials file's name, so `cert.pem` isn't used while running and is only needed for admin commands such as `tunnel create`.
+- **Logging.** cloudflared's stdout and stderr go to `%LOCALAPPDATA%\claudeplay\logs\cloudflared.log` through a handle claudeplay opens, so failures before it opens a log of its own are kept. cloudflared never rotates its output, so a log over 500 KB is renamed to `cloudflared.log.1` each time the tunnel starts.
 
 - **Start and stop order:** the tunnel starts after the gateway and stops before it, so nothing public points at a gateway that's going away.
 - **Recovery:** the tray's 2-second poll calls `check_tunnel`, which restarts a dead tunnel at most every 15 seconds. A failed tunnel leaves the gateway running and shows as degraded.
@@ -118,12 +126,14 @@ Cloudflare reaches the gateway over plain HTTP, which has two consequences:
 
 ## Config handling
 
-- **Edits are in place.** The tray's toggles use tomlkit, so comments, formatting and line endings survive. Writes go to a temp file, then replace the original.
-- **Who reads what, and when:** the gateway reads the file each time it starts. The tray reads it when it launches and after a toggle. That's why some changes need a tray restart ([which ones](operations.md#applying-changes)).
+- **Two files, two folders.** `config.yaml`, `toolkit.yaml`, the token store, the tunnel credentials and `status.json` are in `~/.claudeplay` (`CLAUDEPLAY_HOME`). Logs are in `%LOCALAPPDATA%\claudeplay\logs` (`CLAUDEPLAY_LOGS`), apart from the credentials. `toolkit.yaml` is always read from the folder of the config it goes with.
+- **Edits are in place.** The tray's toggles and the first-run signing key use ruamel.yaml's round-trip mode, so comments, key order, quoting and line endings survive, and a toggle changes only the value. Writes go to a temp file, then replace the original.
+- **Who reads what, and when:** the gateway reads both files each time it starts. The tray reads them when it launches (a bad `toolkit.yaml` is reported there rather than as a crash) and `config.yaml` after a toggle. That's why some changes need a tray restart ([which ones](operations.md#applying-changes)).
 - **`${NAME}`** in any value is replaced in memory with that environment variable. Nothing uses it today.
 
 ## Known gaps
 
 - A crashed gateway doesn't restart by itself.
-- `projects_read` and `wiki_read` have no size limit on their results. `web_fetch` returns 100,000 characters at a time and reads longer pages in parts, loading the page again for each part.
-- Tool names aren't checked against the catalog at startup, so a renamed backend tool just disappears from Claude's list.
+- File tools passed through from a backend have no size limit on their results beyond the backend's own.
+- Two `expose_all` servers that share a tool name can't be told apart in advance: the one earlier in `toolkit.yaml` wins and the other's tool is hidden, with a warning in the log. Listing one of them under another `name` avoids it.
+- `web_fetch` was dropped; the `web-fetch-signed-in` branch keeps that work.

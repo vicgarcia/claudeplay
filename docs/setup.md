@@ -14,16 +14,21 @@ Do the steps in order, because the hostname you pick in step 3 is used in steps 
 
 ## 1. Install claudeplay and the backends
 
-Install claudeplay and whichever backends you want as uv tools, from GitHub. claudeplay's repo is private, so it installs over SSH:
+Install claudeplay as a uv tool, from GitHub. Its repo is private, so it installs over SSH:
 
 ```powershell
 uv tool install git+ssh://git@github.com/vicgarcia/claudeplay
+```
+
+Then install whichever MCP servers you want to use, in whatever way they're distributed. The author's, for example:
+
+```powershell
 uv tool install git+https://github.com/vicgarcia/obsidian-mcp
 uv tool install git+https://github.com/vicgarcia/todo-mcp
 uv tool install git+https://github.com/vicgarcia/pinboard-mcp
 ```
 
-Each puts its command in `~/.local/bin`: `claudeplay.exe`, `claudeplay-tray.exe`, `obsidian-mcp.exe` and so on. The config runs the backends by those paths. windows-mcp doesn't need installing: the config runs a pinned version through `uvx`. `uv tool upgrade --all` updates them all to the latest `main`.
+Each puts its command in `~/.local/bin`: `claudeplay.exe`, `claudeplay-tray.exe`, `obsidian-mcp.exe` and so on. `config.yaml` runs the servers by those paths. A server that runs through `uvx`, such as windows-mcp, needs no install, and the config can pin its version. `uv tool upgrade --all` updates the installed tools to their latest `main`.
 
 Then install cloudflared:
 
@@ -33,11 +38,14 @@ winget install --id Cloudflare.cloudflared --exact
 
 Windows shows an admin prompt for this, which can hide behind other windows. If the install seems stuck, look for it on the taskbar. Open a new terminal afterwards so `cloudflared` is on your PATH.
 
-## 2. Create the config file
+## 2. Create the two files
 
-Copy [config.example.toml](../config.example.toml) to `%LOCALAPPDATA%\claudeplay\config.toml`.
+Make the folder `~/.claudeplay` (`CLAUDEPLAY_HOME` changes it) and copy in two files from the repo:
 
-This one file holds all settings and secrets. It stays outside the repo. Don't commit or paste it. To check it at any time, with secrets masked:
+- [config.example.yaml](../config.example.yaml) as `config.yaml`: settings, sign-in, the tunnel, and how to start each server. It holds secrets once filled in.
+- [toolkit.example.yaml](../toolkit.example.yaml) as `toolkit.yaml`: which of your servers' tools Claude sees ([how to write it](toolkit.md)). It holds no secrets, but ids in it are specific to your account.
+
+Both stay outside the repo. Don't commit or paste `config.yaml`. To check both files at any time, with secrets masked:
 
 ```powershell
 claudeplay check
@@ -76,13 +84,13 @@ Register it and generate a client secret. GitHub shows the secret only once.
 
 Find your numeric user id at `https://api.github.com/users/<your-login>`, in the `id` field. The allow-list matches this number, not your login name.
 
-Fill in `config.toml`, pasting the secret straight into the file:
+Fill in `config.yaml`, pasting the secret straight into the file:
 
-```toml
-[auth]
-client_id = '<client id>'
-client_secret = '<client secret>'
-allowed_user_ids = [<your numeric id>]
+```yaml
+auth:
+  client_id: '<client id>'
+  client_secret: '<client secret>'
+  allowed_user_ids: [<your numeric id>]
 ```
 
 Leave out `jwt_signing_key`. It's generated and saved on the first run.
@@ -95,30 +103,32 @@ cloudflared tunnel create claudeplay
 cloudflared tunnel route dns claudeplay <hostname>
 ```
 
-`login` opens a browser, where you pick your domain. These commands save a certificate and the tunnel's credentials in `~/.cloudflared`.
+`login` opens a browser, where you pick your domain. These commands save a certificate and the tunnel's credentials in `~/.cloudflared`. Copy the tunnel's credentials file, `<tunnel-id>.json`, into `~/.claudeplay/cloudflared`. That's the only file claudeplay needs: it runs the tunnel by its id, which doesn't use the certificate. The certificate (`cert.pem`) is needed only for admin commands such as `tunnel create`, so keep it where it is, or copy it too if you want everything in one place.
 
-Add these to `config.toml`:
+Add these to `config.yaml`:
 
-```toml
-[gateway]
-public_base_url = 'https://<hostname>'
+```yaml
+gateway:
+  public_base_url: https://<hostname>
 
-[tunnel]
-name = 'claudeplay'
+tunnel:
+  name: claudeplay
 ```
 
 Make sure `insecure_no_auth` is not set. The gateway refuses to run without sign-in while a tunnel is enabled.
 
-## 6. Configure the backends
+## 6. Configure your servers
 
-Fill in the `[servers.*]` sections with your own paths and credentials, and set `enabled = true` on the ones you want.
+Under `servers:` in `config.yaml`, give each server its `command`, `args` and `env`, and set `enabled: true` on the ones you want. Then, in `toolkit.yaml`, say which of their tools Claude should see (`expose_all: true`, or a list). A server with nothing listed in `toolkit.yaml` exposes nothing.
+
+For the servers in the example files:
 
 | Server | What it needs |
 |---|---|
 | obsidian | `--vault` path in `args`. "Today" follows the laptop's time zone. Set `TZ` only to override that |
 | pinboard | `PINBOARD_TOKEN`, from pinboard.in → Settings → Password, as `username:TOKEN`. It checks the token at startup and exits if it's wrong |
-| windows | the path to `uvx.exe`. Keep `ANONYMIZED_TELEMETRY = 'false'`, because telemetry is on otherwise |
-| todo | `TODO_CLIENT_ID`, `TODO_CLIENT_SECRET`, and `TODO_REFRESH_TOKEN` from `todo-mcp --auth --client-id ... --client-secret ...` |
+| windows | the path to `uvx.exe`. Keep `ANONYMIZED_TELEMETRY: 'false'`, because telemetry is on otherwise |
+| todo | `TODO_CLIENT_ID`, `TODO_CLIENT_SECRET`, and `TODO_REFRESH_TOKEN` from `todo-mcp --auth --client-id ... --client-secret ...`. The list ids in `toolkit.yaml` come from its `get_lists` tool |
 
 Each server's `env` values go only to that server's process, and nothing secret appears on a command line.
 
@@ -152,7 +162,7 @@ Connectors are tied to your account, so it should also appear in the iPhone app 
 
 ## Local use without a tunnel
 
-To try the gateway on this machine only, skip steps 3 to 5, and in `config.toml` set `insecure_no_auth = true` under `[gateway]` and leave out `[auth]` and `[tunnel]`. This only works on 127.0.0.1. If `[auth]` is present, sign-in is required regardless of this setting.
+To try the gateway on this machine only, skip steps 3 to 5, and in `config.yaml` set `insecure_no_auth: true` under `gateway` and leave out `auth` and `tunnel`. This only works on 127.0.0.1. If `auth` is present, sign-in is required regardless of this setting.
 
 Claude Desktop can't reach localhost through Connectors, so add a bridge to its `claude_desktop_config.json`:
 
