@@ -4,7 +4,8 @@ This goes from nothing to a working connector. Allow an hour or so, plus however
 
 **You need:**
 
-- Windows 11 and [uv](https://docs.astral.sh/uv/)
+- Windows 11 with Smart App Control turned off (Windows Security, App & browser control). It blocks the unsigned programs uv installs, and has no way to allow just these
+- [uv](https://docs.astral.sh/uv/)
 - a domain you can move to Cloudflare (the free plan is enough)
 - a GitHub account
 - a Claude plan that allows custom connectors
@@ -13,13 +14,16 @@ Do the steps in order, because the hostname you pick in step 3 is used in steps 
 
 ## 1. Install claudeplay and the backends
 
-From the repo:
+Install claudeplay and whichever backends you want as uv tools, from GitHub. claudeplay's repo is private, so it installs over SSH:
 
 ```powershell
-uv tool install --editable .
+uv tool install git+ssh://git@github.com/vicgarcia/claudeplay
+uv tool install git+https://github.com/vicgarcia/obsidian-mcp
+uv tool install git+https://github.com/vicgarcia/todo-mcp
+uv tool install git+https://github.com/vicgarcia/pinboard-mcp
 ```
 
-Install whichever backends you want as uv tools too, from their own repos, so that `obsidian-mcp.exe` and `pinboard-mcp.exe` exist in `~/.local/bin`. windows-mcp doesn't need installing: the config runs a pinned version through `uvx`.
+Each puts its command in `~/.local/bin`: `claudeplay.exe`, `claudeplay-tray.exe`, `obsidian-mcp.exe` and so on. The config runs the backends by those paths. windows-mcp doesn't need installing: the config runs a pinned version through `uvx`. `uv tool upgrade --all` updates them all to the latest `main`.
 
 Then install cloudflared:
 
@@ -36,10 +40,8 @@ Copy [config.example.toml](../config.example.toml) to `%LOCALAPPDATA%\claudeplay
 This one file holds all settings and secrets. It stays outside the repo. Don't commit or paste it. To check it at any time, with secrets masked:
 
 ```powershell
-python -m claudeplay check
+claudeplay check
 ```
-
-If `claudeplay` itself won't start, see [Smart App Control](operations.md#the-claudeplay-or-claudeplay-tray-command-silently-does-nothing), and run this with the Python in `%APPDATA%\uv\tools\claudeplay\Scripts\`.
 
 ## 3. Move your domain to Cloudflare and pick a hostname
 
@@ -125,7 +127,7 @@ Each server's `env` values go only to that server's process, and nothing secret 
 ## 7. Start it
 
 ```powershell
-python -m claudeplay install
+claudeplay install
 ```
 
 This adds a shortcut that starts the tray at logon. To start it now, double-click `claudeplay` in your Startup folder (`shell:startup` in the Run dialog). A sparkle icon appears in the system tray, and it turns green once everything is up.
@@ -133,7 +135,7 @@ This adds a shortcut that starts the tray at logon. To start it now, double-clic
 Check it:
 
 ```powershell
-python -m claudeplay status
+claudeplay status
 curl.exe -i -X POST https://<hostname>/mcp
 ```
 

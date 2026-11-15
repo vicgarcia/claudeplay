@@ -41,9 +41,7 @@ enabled = true
 # TZ = 'America/New_York'
 
 [servers.todo]
-# python.exe, not todo-mcp.exe: smart app control blocks the uv launcher stub
-command = 'C:/Users/<you>/AppData/Roaming/uv/tools/todo-mcp/Scripts/python.exe'
-args = ['-c', 'from todo_mcp.server import run; run()']
+command = 'C:/Users/<you>/.local/bin/todo-mcp.exe'
 enabled = false
 
 [servers.todo.env]
@@ -66,9 +64,7 @@ TODO_REFRESH_TOKEN = ''
 # channel = 'msedge'   # or 'chrome', or 'chromium' after `playwright install chromium`
 
 [servers.pinboard]
-# python.exe, not pinboard-mcp.exe: smart app control blocks the uv launcher stub
-command = 'C:/Users/<you>/AppData/Roaming/uv/tools/pinboard-mcp/Scripts/python.exe'
-args = ['-c', 'from pinboard_mcp import run; run()']
+command = 'C:/Users/<you>/.local/bin/pinboard-mcp.exe'
 # pinboard-mcp checks its token at startup and exits if it is wrong
 enabled = false
 

@@ -7,10 +7,11 @@ This is how the parts fit together, for anyone changing the code. Start with [Ov
 Everything runs as one process tree under your user account:
 
 ```
-pythonw.exe -m claudeplay tray            tray, status polling, supervisor
+claudeplay-tray.exe                       tray, status polling, supervisor
 |   (a kill-on-close job holds everything below)
 +-- python.exe -m claudeplay serve        the gateway, on 127.0.0.1:8765
 |   +-- obsidian-mcp.exe                  stdio
+|   +-- todo-mcp.exe                      stdio
 |   +-- pinboard-mcp.exe                  stdio
 |   +-- uvx.exe -> windows-mcp            stdio
 +-- cloudflared.exe tunnel run            the tunnel

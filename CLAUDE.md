@@ -26,7 +26,7 @@ tests/           pytest; tests/fake_server.py is a stdio backend
 ~/.local/bin/uv.exe run python -m claudeplay check
 ```
 
-uv is not on PATH. Windows Application Control sometimes blocks the venv's `pytest.exe`/`claudeplay.exe` launchers (os error 4551); `python -m pytest` / `python -m claudeplay` work. Commit messages are single-line lowercase with no co-author trailer; pass `-c user.name -c user.email` (no global git config).
+uv is not on PATH. Commit messages are single-line lowercase with no co-author trailer; pass `-c user.name -c user.email` (no global git config).
 
 ## The toolkit
 
@@ -42,7 +42,7 @@ Claude sees only what `toolkit.CATALOG` lists: domain names (`journal_*`, `tasks
 - `uvicorn.access` is disabled because it would log OAuth callback query strings.
 - Never log arguments, results, tokens or expanded env values. Error messages name the variable, not its value.
 - pystray inspects callback arity: no default-arg lambdas in menu items.
-- **Smart App Control** (Code Integrity policy `0283ac0f-...`) blocks uv's generated launcher stubs (`claudeplay-tray.exe`, sometimes `claudeplay.exe`/`pytest.exe`): unique hashes, no reputation. The standard `python.exe`/`pythonw.exe` are allowed, so autostart runs `pythonw.exe -m claudeplay tray`. Check `Microsoft-Windows-CodeIntegrity/Operational` events when an exe silently fails to start.
+- **Smart App Control must be off.** Everything uv installs (launchers, interpreters, `.pyd` extensions) is unsigned, so it runs only on reputation, which changes without warning; it has no per-app exceptions. Don't work around it with `python -c`/`pythonw -m` launches: run the installed `.exe` entry points. A silent failure to start shows in the `Microsoft-Windows-CodeIntegrity/Operational` event log.
 
 ## Conventions
 

@@ -125,10 +125,18 @@ It loads the page in a fresh headless browser that isn't signed in to anything, 
 ## Quick reference
 
 ```powershell
-uv tool install --editable .              # install
-python -m claudeplay check                # show the config, secrets masked
-python -m claudeplay status               # show what's running
-python -m claudeplay install              # start the tray at logonuv run --extra test python -m pytest      # run the tests
+uv tool install git+ssh://git@github.com/vicgarcia/claudeplay   # install
+uv tool upgrade claudeplay                # update to the latest main
+claudeplay check                          # show the config, secrets masked
+claudeplay status                         # show what's running
+claudeplay install                        # start the tray at logon
+```
+
+For development, work in the repo:
+
+```powershell
+uv run --extra test python -m pytest      # run the tests
+uv run python -m claudeplay serve --raw   # run a gateway from this checkout
 ```
 
 The config and all secrets live in `%LOCALAPPDATA%\claudeplay\config.toml`, outside this repo. Start from [config.example.toml](config.example.toml).

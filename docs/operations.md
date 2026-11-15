@@ -24,7 +24,7 @@ If the tunnel dies, the tray retries every 15 seconds and shows orange until it'
 
 ## Commands
 
-Run these as `claudeplay <command>`, or `python -m claudeplay <command>` if Smart App Control blocks the launcher.
+Run these as `claudeplay <command>`.
 
 | Command | What it does |
 |---|---|
@@ -103,7 +103,7 @@ Run `claudeplay check`, then look in `logs\claudeplay.log`. The error shows only
 
 ### The `claudeplay` or `claudeplay-tray` command silently does nothing
 
-Smart App Control blocks the launcher programs uv generates, because each has a unique hash with no reputation. The standard Python programs are allowed, so use `python -m claudeplay`. The logon shortcut already runs `pythonw.exe -m claudeplay tray` for this reason. To confirm, check the `Microsoft-Windows-CodeIntegrity/Operational` event log.
+Smart App Control is probably back on. It blocks the unsigned programs uv installs, so claudeplay needs it off ([setup](setup.md)). To confirm, check the `Microsoft-Windows-CodeIntegrity/Operational` event log.
 
 ### Port 8765 is already in use
 
@@ -133,7 +133,7 @@ args = ['--vault', 'C:/path/to/vault']
 ```
 
 ```powershell
-python -m claudeplay --config test.toml serve --console
+claudeplay --config test.toml serve --console
 npx @modelcontextprotocol/inspector --cli http://127.0.0.1:8766/mcp --transport http --method tools/list
 ```
 
