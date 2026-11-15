@@ -104,15 +104,6 @@ class TasksConfig:
     due_today: tuple[str, ...] = ()
 
 
-BROWSER_CHANNELS = ('msedge', 'chrome', 'chromium')
-
-
-@dataclass(frozen=True)
-class BrowserConfig:
-    ''' the browser web_fetch runs: an installed one by channel '''
-    channel: str = 'msedge'
-
-
 @dataclass(frozen=True)
 class GatewayConfig:
     host: str = DEFAULT_HOST
@@ -122,7 +113,6 @@ class GatewayConfig:
     auth: AuthConfig | None = None
     tunnel: TunnelConfig | None = None
     tasks: TasksConfig = field(default_factory=TasksConfig)
-    browser: BrowserConfig = field(default_factory=BrowserConfig)
     # local use only: serve without authentication when there is no [auth] section
     insecure_no_auth: bool = False
 
@@ -211,13 +201,6 @@ def _parse_tasks(raw: dict) -> TasksConfig:
     return TasksConfig(common_lists=dict(lists), due_today=tuple(due_today))
 
 
-def _parse_browser(raw: dict) -> BrowserConfig:
-    channel = raw.get('channel', 'msedge')
-    if channel not in BROWSER_CHANNELS:
-        raise ConfigError(f'browser: channel must be one of {", ".join(BROWSER_CHANNELS)}')
-    return BrowserConfig(channel=channel)
-
-
 def parse(text: str) -> GatewayConfig:
     try:
         raw = tomllib.loads(text)
@@ -249,7 +232,6 @@ def parse(text: str) -> GatewayConfig:
         auth=auth,
         tunnel=tunnel,
         tasks=_parse_tasks(raw.get('tasks', {})),
-        browser=_parse_browser(raw.get('browser', {})),
     )
 
 
@@ -320,7 +302,6 @@ def describe(cfg: GatewayConfig) -> list[str]:
         lines.append(f'tunnel:   {cfg.tunnel.name} {"enabled" if cfg.tunnel.enabled else "disabled"}, {cfg.tunnel.command}')
     if cfg.tasks.common_lists:
         lines.append(f'tasks:    common lists {", ".join(cfg.tasks.common_lists)}; due today {", ".join(cfg.tasks.due_today) or "(off)"}')
-    lines.append(f'browser:  {cfg.browser.channel}')
     for s in cfg.servers:
         lines.append(f'server {s.name}: {"enabled" if s.enabled else "disabled"}')
         lines.append(f'  command {s.command}')

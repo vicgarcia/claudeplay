@@ -179,12 +179,3 @@ def test_tasks_section_is_parsed_and_checked():
     assert config.parse('').tasks == config.TasksConfig()
     with pytest.raises(config.ConfigError, match='Health'):
         config.parse("[tasks]\ndue_today = ['Health']\n[tasks.common_lists]\nChores = 'id-1'\n")
-
-
-def test_browser_section_defaults_to_edge_and_takes_known_channels():
-    assert config.parse('').browser == config.BrowserConfig(channel='msedge')
-    cfg = config.parse("[browser]\nchannel = 'chrome'\n")
-    assert cfg.browser == config.BrowserConfig(channel='chrome')
-    assert 'browser:  chrome' in config.describe(cfg)
-    with pytest.raises(config.ConfigError, match='browser'):
-        config.parse("[browser]\nchannel = 'firefox'\n")

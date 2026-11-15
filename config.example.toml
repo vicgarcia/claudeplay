@@ -59,10 +59,6 @@ TODO_REFRESH_TOKEN = ''
 # Chores = '<list id>'
 # Grocery = '<list id>'
 
-# web_fetch's browser. leave this out for edge.
-# [browser]
-# channel = 'msedge'   # or 'chrome', or 'chromium' after `playwright install chromium`
-
 [servers.pinboard]
 command = 'C:/Users/<you>/.local/bin/pinboard-mcp.exe'
 # pinboard-mcp checks its token at startup and exits if it is wrong

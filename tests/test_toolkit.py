@@ -10,9 +10,9 @@ from claudeplay import config, gateway, toolkit
 
 FAKE_OBSIDIAN = str(Path(__file__).parent / 'fake_obsidian.py')
 EXPECTED = ['get_current_timestamp', 'journal_list_month', 'journal_read', 'journal_add_note', 'journal_append', 'journal_prepend', 'projects_list', 'projects_files',
-            'projects_create', 'projects_read', 'projects_write', 'wiki_list', 'wiki_read', 'web_fetch']
+            'projects_create', 'projects_read', 'projects_write', 'wiki_list', 'wiki_read']
 # the tools built into the gateway, there with no backends at all
-BUILT_IN = ['get_current_timestamp', 'web_fetch']
+BUILT_IN = ['get_current_timestamp']
 
 
 def obsidian() -> config.ServerConfig:
@@ -296,21 +296,9 @@ def test_without_task_config_nothing_account_specific_is_published():
 def test_instructions_cover_the_common_workflows():
     assert 'narrative' not in toolkit.INSTRUCTIONS
     workflows = toolkit.INSTRUCTIONS.split('common workflows:')[1]
-    for tool in ('tasks_get_due_today', 'tasks_get_completed_between', 'journal_add_note', 'journal_read', 'projects_write', 'web_fetch'):
+    for tool in ('tasks_get_due_today', 'tasks_get_completed_between', 'journal_add_note', 'journal_read', 'projects_write'):
         assert tool in workflows
     assert 'bookmarks' in workflows
-
-
-def test_web_fetch_is_the_built_in_browser_and_takes_a_url_offset_and_main_only():
-    async def steps(client):
-        return next(t for t in await client.list_tools() if t.name == 'web_fetch')
-
-    tool = run(config.GatewayConfig(servers=()), steps)
-    assert list(tool.input_schema['properties']) == ['url', 'offset', 'main_only']
-    assert tool.input_schema['required'] == ['url']
-    assert all(p.get('description') for p in tool.input_schema['properties'].values())
-    assert tool.annotations.read_only_hint is True and tool.annotations.open_world_hint is True
-    assert 'not signed in to any site' in tool.description
 
 
 def test_a_changed_default_is_visible_sent_and_can_be_overridden():
