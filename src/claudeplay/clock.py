@@ -4,7 +4,17 @@ from datetime import datetime, timezone
 
 from fastmcp import FastMCP
 
+from .toolkit import Entry
+
 NAME = 'clock'
+
+# the one tool built into claudeplay, presented like any other; the gateway adds it to every toolkit
+ENTRY = Entry(
+    name='get_current_timestamp',
+    source='clock_get_current_timestamp',
+    description="The current date and time in every common form: date as YYYY-MM-DD (the form the journal and task tools take), 24-hour and 12-hour time, day of the week, a spoken-style date such as 'Sunday November 8, 2026 at 2:32 PM', ISO 8601 local and UTC timestamps, unix seconds, ISO week, time zone name and UTC offset. Call it before other date-based tools to resolve 'today', 'yesterday' or 'last tuesday' instead of relying on your own sense of the date. It follows the time zone of the user's laptop, which may differ from where the user is.",
+    read_only=True,
+)
 
 
 def format_timestamp(now: datetime) -> dict:

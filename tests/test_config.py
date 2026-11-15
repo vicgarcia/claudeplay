@@ -229,13 +229,10 @@ def test_describe_masks_every_secret(tmp_path):
     assert 'abc' in text and '[42]' in text and 'TODO_CLIENT_SECRET=' in text and 'todo: disabled' in text
 
 
-def test_tasks_section_is_parsed_and_checked():
-    tasks = config.parse('tasks:\n  due_today: [Chores]\n  common_lists:\n    Chores: id-1\n    Grocery: id-2\n').tasks
-    assert tasks.common_lists == {'Chores': 'id-1', 'Grocery': 'id-2'}
-    assert tasks.due_today == ('Chores',)
-    assert config.parse('').tasks == config.TasksConfig()
-    with pytest.raises(config.ConfigError, match='Health'):
-        config.parse('tasks:\n  due_today: [Health]\n  common_lists:\n    Chores: id-1\n')
+def test_the_tasks_and_browser_sections_are_gone_so_they_are_errors():
+    for text in ('tasks:\n  due_today: [Chores]\n', 'browser:\n  channel: chrome\n'):
+        with pytest.raises(config.ConfigError, match='Extra inputs are not permitted'):
+            config.parse(text)
 
 
 TUNNEL_ID = '123e4567-e89b-12d3-a456-426614174000'

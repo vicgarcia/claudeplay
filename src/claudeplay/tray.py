@@ -10,7 +10,7 @@ from pathlib import Path
 import pystray
 from PIL import Image, ImageDraw
 
-from . import config, supervisor, winutil
+from . import clock, config, supervisor, toolkit, winutil
 from .supervisor import Supervisor
 
 log = logging.getLogger('claudeplay.tray')
@@ -218,6 +218,8 @@ def run(config_path=None, extra_args: list[str] | None = None, autostart_gateway
     try:
         config_path = config_path or config.default_config_path()
         cfg = config.load(config_path)
+        # the gateway would refuse a bad toolkit.yaml and the tray would only show a crash, so say why here
+        toolkit.load(config_path, cfg, (clock.ENTRY,))
     except config.ConfigError as e:
         message_box(f'cannot start: {e}')
         return 2

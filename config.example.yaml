@@ -69,13 +69,3 @@ servers:
     enabled: false
     env:
       ANONYMIZED_TELEMETRY: 'false'
-
-# temporary, removed when toolkit.yaml takes over: your own task lists. the ids of common_lists are
-# published in the tasks_get_lists description, and due_today names the main lists, which
-# tasks_get_due_today and tasks_get_completed_between use. get the ids from the tasks_get_lists tool.
-# tasks:
-#   due_today: [Tasks, Chores]
-#   common_lists:
-#     Tasks: <list id>
-#     Chores: <list id>
-#     Grocery: <list id>

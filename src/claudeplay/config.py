@@ -117,13 +117,6 @@ class TunnelConfig:
 
 
 @dataclass(frozen=True)
-class TasksConfig:
-    ''' account-specific task lists: name to id for the common ones, and the names of the main lists, which tasks_get_due_today and tasks_get_completed_between use '''
-    common_lists: dict[str, str] = field(default_factory=dict)
-    due_today: tuple[str, ...] = ()
-
-
-@dataclass(frozen=True)
 class GatewayConfig:
     host: str = DEFAULT_HOST
     port: int = DEFAULT_PORT
@@ -131,7 +124,6 @@ class GatewayConfig:
     servers: tuple[ServerConfig, ...] = ()
     auth: AuthConfig | None = None
     tunnel: TunnelConfig | None = None
-    tasks: TasksConfig = field(default_factory=TasksConfig)
     # local use only: serve without authentication when there is no auth section
     insecure_no_auth: bool = False
 
@@ -166,69 +158,65 @@ def resolve(server: ServerConfig, environ: dict[str, str] | None = None) -> Reso
     )
 
 
-class _Model(BaseModel):
+class Model(BaseModel):
     ''' a config section: unknown keys and wrong types are errors, so a typo fails instead of being ignored '''
     model_config = ConfigDict(extra='forbid', strict=True)
 
 
-class _GatewayModel(_Model):
+class _GatewayModel(Model):
     host: str = DEFAULT_HOST
     port: int = Field(DEFAULT_PORT, ge=1, le=65535)
     public_base_url: str = ''
     insecure_no_auth: bool = False
 
 
-class _AuthModel(_Model):
+class _AuthModel(Model):
     client_id: str = ''
     client_secret: str = ''
     jwt_signing_key: str = ''
     allowed_user_ids: list[int] = []
 
 
-class _TunnelModel(_Model):
+class _TunnelModel(Model):
     name: str = Field(min_length=1)
     command: str = Field(DEFAULT_CLOUDFLARED, min_length=1)
     enabled: bool = True
     credentials_file: str = ''
 
 
-class _ServerModel(_Model):
+class _ServerModel(Model):
     command: str = Field(min_length=1)
     args: list[str] = []
     env: dict[str, str] = {}
     enabled: bool = True
 
 
-class _TasksModel(_Model):
-    common_lists: dict[str, str] = {}
-    due_today: list[str] = []
-
-
-class _ConfigModel(_Model):
+class _ConfigModel(Model):
     gateway: _GatewayModel = _GatewayModel()
     auth: _AuthModel | None = None
     tunnel: _TunnelModel | None = None
     servers: dict[str, _ServerModel] = {}
-    tasks: _TasksModel = _TasksModel()
 
 
-def _yaml() -> YAML:
-    ''' a round-trip parser: edits keep comments, key order and quoting '''
-    yaml = YAML(typ='rt')
+def _yaml(safe: bool = False) -> YAML:
+    ''' a round-trip parser, so edits keep comments, key order and quoting; safe gives plain python values '''
+    yaml = YAML(typ='safe' if safe else 'rt')
     yaml.preserve_quotes = True
     # never re-wrap long values
     yaml.width = 1 << 20
     return yaml
 
 
-def load_yaml(text: str, name: str) -> Any:
+def load_yaml(text: str, name: str, safe: bool = False) -> Any:
     ''' parse yaml text; a syntax error names the file and line, never the text (it may hold secrets) '''
     try:
-        return _yaml().load(text)
+        return _yaml(safe).load(text)
     except YAMLError as e:
         mark = getattr(e, 'problem_mark', None)
         where = f' line {mark.line + 1}' if mark is not None else ''
-        raise ConfigError(f'{name}:{where}: invalid yaml ({getattr(e, "problem", None) or "syntax error"})') from None
+        # a duplicate key's message quotes both values
+        problem = 'duplicate key' if type(e).__name__ == 'DuplicateKeyError' else getattr(e, 'problem', None) or 'syntax error'
+        raise ConfigError(f'{name}:{where}: invalid yaml ({problem})') from None
 
 
 def validation_error(name: str, e: ValidationError) -> ConfigError:
@@ -250,11 +238,6 @@ def parse(text: str, name: str = CONFIG_NAME) -> GatewayConfig:
         model = _ConfigModel.model_validate(raw)
     except ValidationError as e:
         raise validation_error(name, e) from None
-
-    tasks = model.tasks
-    unknown = [n for n in tasks.due_today if n not in tasks.common_lists]
-    if unknown:
-        raise ConfigError(f'{name}: tasks.due_today: names lists missing from common_lists: {", ".join(unknown)}')
     return GatewayConfig(
         host=model.gateway.host,
         port=model.gateway.port,
@@ -276,7 +259,6 @@ def parse(text: str, name: str = CONFIG_NAME) -> GatewayConfig:
             enabled=model.tunnel.enabled,
             credentials_file=model.tunnel.credentials_file,
         ),
-        tasks=TasksConfig(common_lists=dict(tasks.common_lists), due_today=tuple(tasks.due_today)),
     )
 
 
@@ -388,8 +370,6 @@ def describe(cfg: GatewayConfig) -> list[str]:
     else:
         lines.append(f'tunnel:   {cfg.tunnel.name} {"enabled" if cfg.tunnel.enabled else "disabled"}, {cfg.tunnel.command}')
         lines.append(f'          credentials {cfg.tunnel.credentials_file or str(cloudflared_dir()) + " (default)"}')
-    if cfg.tasks.common_lists:
-        lines.append(f'tasks:    common lists {", ".join(cfg.tasks.common_lists)}; due today {", ".join(cfg.tasks.due_today) or "(off)"}')
     for s in cfg.servers:
         lines.append(f'server {s.name}: {"enabled" if s.enabled else "disabled"}')
         lines.append(f'  command {s.command}')

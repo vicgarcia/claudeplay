@@ -1,0 +1,325 @@
+# claudeplay toolkit: copy to ~/.claudeplay/toolkit.yaml (the folder of config.yaml) and edit.
+# it says which of each server's tools claude sees, under what names and descriptions. it holds no
+# secrets, but the list ids below are specific to your account, so the copy stays out of the repo.
+# every server named here must be in config.yaml. a tool a server does not list is hidden, and so are
+# its prompts and resources. `claudeplay check` validates this file; unknown keys are errors.
+#
+# per tool:
+#   source       the backend's own tool name, without the <server>_ prefix (required)
+#   name         the name claude sees; leave it out to use the backend's name
+#   description  what claude is told the tool does (required)
+#   read_only    true for tools that change nothing (default false)
+#   destructive  true for tools that can overwrite or remove existing data (default false)
+#   open_world   true for tools that reach beyond your own data (default false)
+#   args         argument name -> description claude sees
+#   hide         arguments claude cannot see or set; they stay at the backend's default, so they must be optional
+#   fixed        arguments claude cannot see or set, always sent with these values
+#   defaults     arguments claude can see, with a different default from the backend's
+# an argument named in args, hide, fixed or defaults that the backend does not take marks the server
+# failed when the gateway starts, naming the tool and argument.
+# tools appear in this file's order. YAML anchors (&name, *name) avoid repeating a value.
+
+# sent once when claude connects: ideas that span servers. each enabled server adds its own below.
+instructions: |
+  claudeplay is a personal productivity toolkit over the user's own data.
+  get_current_timestamp gives the current date and time; call it before any date-based tool rather than relying on your own sense of the date.
+
+servers:
+  # the journal, projects and wiki in your vault
+  obsidian:
+    instructions: |
+      the journal holds one entry per day, with a # Daily Notes section that notes are added to through the day and other sections, such as a daily recap, above it. journal tools take dates as YYYY-MM-DD; call get_current_timestamp before writing to the journal rather than relying on your own sense of the date. if it is after midnight and the user hasn't slept, confirm whether they mean the previous day.
+      projects are folders of notes for ongoing work. projects_files gives the paths that read_file and write_file take.
+      the wiki is a set of standalone articles. wiki_list gives the paths that read_file takes.
+
+      common workflows:
+      - the user adds a journal note with a short spoken prompt: use journal_add_note, keeping their words.
+      - the user asks about specific days in the journal: use journal_read for each day, with get_current_timestamp to work out the dates and journal_list_month to see which days have entries.
+      - the user asks for, discusses or researches something, then asks for it to be documented: add it to the journal with journal_add_note and to project files with write_file, reading an existing file first.
+    tools:
+      - source: list_journal_entries_by_year_and_month
+        name: journal_list_month
+        description: >-
+          List which days have a journal entry in a given month. Use it to find entries before reading them.
+        read_only: true
+        args:
+          year: 'four-digit year, e.g. "2026"'
+          month: 'two-digit month, e.g. "03" for march'
+      - source: read_journal_entry
+        name: journal_read
+        description: >-
+          Read the journal entry for one day. Returns exists=false if there is no entry.
+        read_only: true
+        args:
+          date: 'the day, as YYYY-MM-DD'
+      - source: add_note_to_journal_entry
+        name: journal_add_note
+        description: >-
+          Add a note to a day's journal; this is the usual way to write to it. The note goes at the end of
+          the day's # Daily Notes section, creating the entry and the section if needed, and is stamped with
+          the current time on the line after it, so never write a timestamp yourself. Start the note with a
+          ### heading naming its topic, then the note on the next line; organize a longer note with ####
+          sections and ##### subsections, and never use # or ## headings. Never changes what is already
+          there.
+        args:
+          text: 'the note, starting with a ### heading, in the words the user wants recorded; markdown allowed'
+          date: 'the day, as YYYY-MM-DD; leave it out for today. after midnight, if the user hasn''t slept, confirm and pass the previous day'
+      - source: append_to_journal_entry
+        name: journal_append
+        description: >-
+          Add text to the very end of a day's journal entry exactly as given, creating the entry if needed.
+          Nothing is added: no blank line before the text and no newline after it, so include the newlines
+          you need. Never changes what is already there. To add a note, use journal_add_note instead; use
+          this only for something that isn't a note.
+        args:
+          text: 'the text to add, written exactly as given, newlines included; markdown allowed'
+          date: 'the day, as YYYY-MM-DD; leave it out for today'
+      - source: prepend_to_journal_entry
+        name: journal_prepend
+        description: >-
+          Add text at the top of a day's journal entry exactly as given, right after any frontmatter,
+          creating the entry if needed. Use it for top-level (#) sections above the # Daily Notes section,
+          such as a # Daily Recap. Nothing is added between the text and what follows, so end the text with
+          a blank line. Never changes what is already there.
+        args:
+          text: 'the section to add, written exactly as given and ending with a blank line; markdown allowed'
+          date: 'the day, as YYYY-MM-DD; leave it out for today'
+      - source: list_projects
+        name: projects_list
+        description: >-
+          List the user's projects.
+        read_only: true
+      - source: list_project_content
+        name: projects_files
+        description: >-
+          List the files in one project, with their paths.
+        read_only: true
+        args:
+          project: 'the project name, from projects_list'
+      - source: create_project
+        name: projects_create
+        description: >-
+          Create a new, empty project. Use projects_write to add files to it.
+        args:
+          project: 'the project name, in lowercase with spaces, e.g. "home automation"'
+      - source: read_file
+        description: >-
+          Read a file in the vault, such as a project file or a wiki article. The path is relative to the
+          vault, as listed by projects_files or wiki_list.
+        read_only: true
+        args:
+          file_path: 'the path, from projects_files or wiki_list'
+      - source: write_file
+        description: >-
+          Create or replace a file in the vault. This overwrites the whole file, so read an existing file
+          first and send its full new content. The path is relative to the vault, e.g. "projects/home
+          automation/plan.md"; a project is made with projects_create.
+        destructive: true
+        args:
+          file_path: 'the path, from projects_files, or a new one in an existing project, e.g. "projects/home automation/plan.md"'
+          content: 'the complete new content of the file, in markdown'
+      - source: list_wiki
+        name: wiki_list
+        description: >-
+          List the wiki articles, with their paths.
+        read_only: true
+
+  # this laptop: files and a shell, as you
+  windows:
+    instructions: |
+      the pc tools act on the user's windows laptop as the user. it is usually locked and unattended, so nothing with a window or a prompt will work.
+    tools:
+      - source: FileSystem
+        name: pc_files
+        description: >-
+          Read, write, copy, move, delete, list, search or get info on files on the user's laptop.
+        destructive: true
+        args:
+          mode: 'one of read, write, copy, move, delete, list, search, info'
+          path: 'absolute windows path, starting from the drive letter'
+          destination: 'for copy and move, the absolute path to copy or move to'
+          content: 'for write, the text to write'
+          pattern: 'for search and list, a filename pattern such as "*.pdf"; it matches names, not file contents'
+          recursive: 'for search and list, true to include subfolders; for delete, true is required to delete a folder with its contents'
+          append: 'for write, true to add to the end of the file instead of replacing it'
+          overwrite: 'for copy and move, true to replace anything already at the destination'
+          offset: 'for read, the line to start from, counting from 1'
+          limit: 'for read, how many lines to return'
+          show_hidden: 'for list, true to include hidden files'
+        hide: [encoding]
+      - source: PowerShell
+        name: pc_shell
+        description: >-
+          Run a PowerShell command on the user's laptop and return its output. It must finish without any
+          window or prompt.
+        open_world: true
+        args:
+          command: 'the powershell command'
+          timeout: 'seconds to wait for it'
+
+  # bookmarks
+  pinboard:
+    instructions: |
+      bookmarks are private by default: always pass private=true to bookmarks_add unless the user asks for a public bookmark.
+      when the user asks about their bookmarks, do not read the whole list back: share a few high-value examples, then answer questions from the rest.
+    tools:
+      - source: get_bookmarks
+        name: bookmarks_list
+        description: >-
+          List the user's bookmarks, newest first, filtered by tag and date. There is no keyword search. Do
+          not read the whole list back: share a few high-value examples, then answer questions from the
+          rest.
+        read_only: true
+        args:
+          tags: 'comma-separated tags, e.g. "recipes,bread"'
+          start_date: 'earliest date, as YYYY-MM-DD'
+          end_date: 'latest date, as YYYY-MM-DD'
+          limit: 'how many to fetch, at most 500'
+        defaults: {limit: 50}
+      - source: add_bookmark
+        name: bookmarks_add
+        description: >-
+          Save a new bookmark. Fails if the URL is already bookmarked; use bookmarks_update for that.
+        args:
+          url: 'the full URL, including https://'
+          title: 'the bookmark title'
+          description: 'notes on the bookmark'
+          tags: 'comma-separated tags, e.g. "recipes,bread"'
+          private: 'true unless the user asks for a public bookmark; leaving it out makes the bookmark public'
+          toread: 'true to mark it as to read'
+      - source: update_bookmark
+        name: bookmarks_update
+        description: >-
+          Change a bookmark, found by its URL. Only the arguments given change; new values replace the old
+          ones.
+        destructive: true
+        args:
+          url: 'the URL of the bookmark, from bookmarks_list'
+          title: 'new title'
+          description: 'new notes, replacing the existing notes'
+          tags: 'comma-separated tags, replacing all existing tags'
+          private: 'true for private, false for public'
+          toread: 'true to mark it as to read, false to clear that'
+
+  # microsoft to do. the list ids are account-specific: get them from tasks_get_lists, and replace the
+  # placeholders below
+  todo:
+    instructions: |
+      the tasks tools work on the user's task lists. tasks_get_lists returns the lists themselves, with the list ids the other tasks tools need. tasks_get_tasks returns the tasks inside one list; it and tasks_get_due_today give the task ids. a task can have steps, a checklist inside it, which only tasks_get_steps shows; it gives the step ids. the tasks_get_lists description already gives the ids of the commonly used lists, so calling it is only needed for other lists.
+
+      common workflows:
+      - the user asks about their tasks for the day: use tasks_get_due_today.
+      - the user asks what they got done: use tasks_get_completed_between.
+    tools:
+      - source: get_lists
+        name: tasks_get_lists
+        description: >-
+          List the user's task lists themselves, with their ids. For the tasks inside a list, use
+          tasks_get_tasks. Commonly used lists and their ids: Tasks = <Tasks id>; Chores = <Chores id>;
+          Grocery = <Grocery id>. The user has other lists too, which only this tool can find.
+        read_only: true
+      - source: get_tasks
+        name: tasks_get_tasks
+        description: >-
+          List the tasks inside one task list, open tasks by default. For the lists themselves, use
+          tasks_get_lists. Steps are not included; use tasks_get_steps for those.
+        read_only: true
+        args:
+          list_id: 'the list id, from tasks_get_lists'
+          status: 'one of not_completed, completed, all'
+          limit: 'how many to return, at most 1000'
+      - source: get_tasks_due_today
+        name: tasks_get_due_today
+        description: >-
+          Find open tasks due today in the user's main lists: Tasks, Chores. Leaves out overdue tasks and
+          other lists; use tasks_get_tasks to see everything in a list.
+        read_only: true
+        fixed: {list_ids: &main [<Tasks id>, <Chores id>]}
+      - source: get_tasks_by_completed_date_range
+        name: tasks_get_completed_between
+        description: >-
+          Find tasks completed between two dates, grouped by list and by day. Use it for what the user got
+          done. Checks the user's main lists unless given list_ids: Tasks, Chores.
+        read_only: true
+        args:
+          start_date: 'the first day, as YYYY-MM-DD'
+          end_date: 'the last day, as YYYY-MM-DD; today if left out'
+          list_ids: 'the list ids to check, from tasks_get_lists; the main lists if left out'
+        defaults: {list_ids: *main}
+      - source: create_task
+        name: tasks_add_task
+        description: >-
+          Add a task to a task list, optionally with a due date, notes, importance or recurrence.
+        args:
+          title: 'the task, in the words the user wants recorded'
+          list_id: 'the list id, from tasks_get_lists'
+          due_date: 'due date, as YYYY-MM-DD; required for recurrence'
+          body_text: 'notes on the task'
+          importance: 'one of low, normal, high'
+          recurrence_type: 'one of daily, weekly, monthly'
+          recurrence_interval: 'repeat every this many days, weeks or months'
+          recurrence_days_of_week: 'for weekly, lowercase day names, e.g. ["monday", "friday"]'
+          recurrence_day_of_month: 'for monthly, the day from 1 to 31'
+      - source: update_task
+        name: tasks_update_task
+        description: >-
+          Change a task's title, due date, notes, importance, status or recurrence, or remove its due date
+          or notes. Only the arguments given change; new values replace the old ones.
+        destructive: true
+        args:
+          task_id: 'the task, from tasks_get_tasks or tasks_get_due_today'
+          list_id: 'the list the task is in'
+          title: 'new title; it cannot be blank'
+          due_date: 'new due date, as YYYY-MM-DD'
+          clear_due_date: 'true to remove the due date; can''t be combined with due_date or recurrence_type'
+          body_text: 'new notes, replacing the existing notes; an empty string removes them'
+          importance: 'one of low, normal, high'
+          status: 'one of notStarted, inProgress, completed, waitingOnOthers, deferred'
+          recurrence_type: 'one of daily, weekly, monthly'
+          recurrence_interval: 'repeat every this many days, weeks or months'
+          recurrence_days_of_week: 'for weekly, lowercase day names, e.g. ["monday", "friday"]'
+          recurrence_day_of_month: 'for monthly, the day from 1 to 31'
+          remove_recurrence: 'true to stop the task repeating'
+      - source: complete_task
+        name: tasks_complete_task
+        description: >-
+          Mark a task as completed.
+        args:
+          task_id: 'the task, from tasks_get_tasks or tasks_get_due_today'
+          list_id: 'the list the task is in'
+      - source: get_steps
+        name: tasks_get_steps
+        description: >-
+          List a task's steps, the checklist inside it, with whether each is checked off. The other task
+          tools don't show steps.
+        read_only: true
+        args:
+          task_id: 'the task, from tasks_get_tasks or tasks_get_due_today'
+          list_id: 'the list the task is in'
+      - source: create_step
+        name: tasks_add_step
+        description: >-
+          Add a step to the end of a task's checklist.
+        args:
+          task_id: 'the task, from tasks_get_tasks or tasks_get_due_today'
+          list_id: 'the list the task is in'
+          name: 'the step, in the words the user wants recorded'
+      - source: update_step
+        name: tasks_update_step
+        description: >-
+          Rename a step, or check or uncheck it. Only the arguments given change.
+        destructive: true
+        args:
+          item_id: 'the step, from tasks_get_steps'
+          task_id: 'the task the step is in'
+          list_id: 'the list the task is in'
+          name: 'new text for the step'
+          is_checked: 'true to check it off, false to uncheck it'
+      - source: complete_step
+        name: tasks_complete_step
+        description: >-
+          Check a step off.
+        args:
+          item_id: 'the step, from tasks_get_steps'
+          task_id: 'the task the step is in'
+          list_id: 'the list the task is in'

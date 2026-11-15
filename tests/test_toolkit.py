@@ -1,52 +1,76 @@
 import asyncio
 import json
+import logging
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
-from fastmcp import Client
+from fastmcp import Client, FastMCP
 
-from claudeplay import config, gateway, toolkit
+from claudeplay import clock, config, gateway, toolkit
 
-FAKE_OBSIDIAN = str(Path(__file__).parent / 'fake_obsidian.py')
-EXPECTED = ['get_current_timestamp', 'journal_list_month', 'journal_read', 'journal_add_note', 'journal_append', 'journal_prepend', 'projects_list', 'projects_files',
-            'projects_create', 'projects_read', 'projects_write', 'wiki_list', 'wiki_read']
+HERE = Path(__file__).parent
+FAKE_OBSIDIAN = str(HERE / 'fake_obsidian.py')
+FAKE_TODO = str(HERE / 'fake_todo.py')
+EXAMPLE = HERE.parent / 'toolkit.example.yaml'
+
+# what the shipped example presents over the fake obsidian, which has no tool for the rest
+EXPECTED = ['get_current_timestamp', 'journal_list_month', 'journal_read', 'journal_add_note', 'journal_append', 'journal_prepend',
+            'projects_list', 'projects_files', 'projects_create', 'read_file', 'write_file', 'wiki_list']
 # the tools built into the gateway, there with no backends at all
 BUILT_IN = ['get_current_timestamp']
 
 
-def obsidian() -> config.ServerConfig:
-    return config.ServerConfig(name='obsidian', command=sys.executable, args=(FAKE_OBSIDIAN,))
+def server(name: str, fake: str | None = None, enabled: bool = True) -> config.ServerConfig:
+    return config.ServerConfig(name=name, command=sys.executable, args=(fake,) if fake else (), enabled=enabled)
 
 
-async def session(cfg, steps):
-    ''' run steps(client) against the curated gateway '''
-    gw, _ = gateway.build(cfg)
+def example_cfg(obsidian: bool = True, todo: bool = False) -> config.GatewayConfig:
+    ''' the servers the example toolkit names: obsidian and todo over fakes, the others never started '''
+    return config.GatewayConfig(servers=(
+        server('obsidian', FAKE_OBSIDIAN, obsidian), server('todo', FAKE_TODO, todo),
+        server('pinboard', enabled=False), server('windows', enabled=False),
+    ))
+
+
+def example_toolkit(cfg: config.GatewayConfig) -> toolkit.Toolkit:
+    return toolkit.parse(EXAMPLE.read_text(encoding='utf-8'), cfg, (clock.ENTRY,), EXAMPLE.name)
+
+
+def from_text(text: str, cfg: config.GatewayConfig) -> toolkit.Toolkit:
+    return toolkit.parse(text, cfg, (clock.ENTRY,))
+
+
+async def session(cfg, steps, tk=None):
+    ''' run steps(client) against the gateway presenting tk (default: the shipped example) '''
+    gw, _ = gateway.build(cfg, tk or example_toolkit(cfg))
     async with Client(gw, mode='legacy') as client:
         return await steps(client)
 
 
-def run(cfg, steps):
-    return asyncio.run(session(cfg, steps))
+def run(cfg, steps, tk=None):
+    return asyncio.run(session(cfg, steps, tk))
 
 
 def payload(result) -> dict:
     return json.loads(result.content[0].text)
 
 
-def test_only_catalogued_tools_are_exposed_in_catalog_order():
+def test_only_listed_tools_are_exposed_in_file_order():
     async def steps(client):
         return [t.name for t in await client.list_tools()]
 
-    assert run(config.GatewayConfig(servers=(obsidian(),)), steps) == EXPECTED
+    assert run(example_cfg(), steps) == EXPECTED
 
 
-def test_descriptions_annotations_and_argument_docs_come_from_the_catalog():
+def test_descriptions_annotations_and_argument_docs_come_from_the_toolkit():
     async def steps(client):
         return {t.name: t for t in await client.list_tools()}
 
-    tools = run(config.GatewayConfig(servers=(obsidian(),)), steps)
-    entries = {e.name: e for e in toolkit.CATALOG}
+    cfg = example_cfg()
+    tools = run(cfg, steps)
+    entries = {e.name: e for e in example_toolkit(cfg).entries((clock.ENTRY,))}
     for name, tool in tools.items():
         assert tool.description == entries[name].description
         assert tool.annotations.read_only_hint is entries[name].read_only
@@ -67,7 +91,7 @@ def test_calls_route_to_the_backend():
         earlier = payload(await client.call_tool('journal_read', {'date': '2026-10-01'}))
         return month, noted, prepended, appended, today, earlier
 
-    month, noted, prepended, appended, today, earlier = run(config.GatewayConfig(servers=(obsidian(),)), steps)
+    month, noted, prepended, appended, today, earlier = run(example_cfg(), steps)
     assert [e['name'] for e in month] == ['2026-10-01.md']
     assert noted['created'] is True and noted['timestamp'] == '2026-10-29 09:00'
     assert prepended['created'] is False and appended['created'] is False
@@ -79,7 +103,7 @@ def test_journal_writes_take_text_and_an_optional_date():
     async def steps(client):
         return {t.name: t for t in await client.list_tools()}
 
-    tools = run(config.GatewayConfig(servers=(obsidian(),)), steps)
+    tools = run(example_cfg(), steps)
     for name in ('journal_add_note', 'journal_append', 'journal_prepend'):
         schema = tools[name].input_schema
         assert list(schema['properties']) == ['text', 'date'] and schema['required'] == ['text']
@@ -92,111 +116,58 @@ def test_clock_tool_works_with_no_backends_and_does_not_use_obsidian():
         stamp = payload(await client.call_tool('get_current_timestamp', {}))
         return names, stamp
 
-    names, stamp = run(config.GatewayConfig(servers=()), steps)
+    names, stamp = run(config.GatewayConfig(servers=()), steps, toolkit.Toolkit())
     assert names == BUILT_IN
     assert set(stamp) == {'iso', 'utc', 'unix', 'date', 'time', 'time_12h', 'day_of_week', 'human_date', 'human',
                           'iso_week', 'timezone', 'utc_offset'}
     assert stamp['iso'].startswith(f"{stamp['date']}T{stamp['time']}")
 
 
-def test_listed_paths_work_with_the_read_and_write_tools():
+def test_the_vaults_own_file_tools_are_exposed_directly_and_listed_paths_work_with_them():
     async def steps(client):
+        tools = {t.name: t for t in await client.list_tools()}
         project = payload(await client.call_tool('projects_files', {'project': 'garage'}))
         wiki = payload(await client.call_tool('wiki_list', {}))
-        article = payload(await client.call_tool('wiki_read', {'file_path': wiki[0]['path']}))
-        await client.call_tool('projects_write', {'file_path': project[0]['path'], 'content': 'more shelves'})
-        plan = payload(await client.call_tool('projects_read', {'file_path': project[0]['path']}))
-        return article, plan
+        article = payload(await client.call_tool('read_file', {'file_path': wiki[0]['path']}))
+        await client.call_tool('write_file', {'file_path': project[0]['path'], 'content': 'more shelves'})
+        plan = payload(await client.call_tool('read_file', {'file_path': project[0]['path']}))
+        return tools, article, plan
 
-    article, plan = run(config.GatewayConfig(servers=(obsidian(),)), steps)
+    tools, article, plan = run(example_cfg(), steps)
     assert article == {'content': 'bridges'}
     assert plan == {'content': 'more shelves'}
+    assert tools['read_file'].annotations.read_only_hint is True
+    assert tools['write_file'].annotations.destructive_hint is True
+    assert set(tools['write_file'].input_schema['properties']) == {'file_path', 'content'}
+    # no guards: the old guarded tools are gone, and claudeplay no longer checks paths itself
+    assert not {'projects_read', 'projects_write', 'wiki_read'} & set(tools)
 
 
-def test_general_file_tools_are_only_reachable_through_guards():
-    general = [e for e in toolkit.CATALOG if e.source in ('obsidian_read_file', 'obsidian_write_file')]
-    assert {e.name for e in general} == {'projects_read', 'projects_write', 'wiki_read'}
-    assert all(e.guard for e in general)
-
-
-OUTSIDE_A_PROJECT = ['journal/2026/10/2026-10-01.md', 'wiki/docker networking.md', 'projects/loose.md', 'projects',
-                     'projects/garage/../../journal/2026/10/2026-10-01.md', '/etc/passwd', 'C:/Windows/system.ini',
-                     'projects\\garage\\..\\..\\journal\\2026\\10\\2026-10-01.md', 'projects/garage/plan.md:hidden']
-
-
-@pytest.mark.parametrize('path', OUTSIDE_A_PROJECT)
-def test_project_tools_refuse_paths_outside_a_project(path):
-    async def steps(client):
-        read = await client.call_tool('projects_read', {'file_path': path}, raise_on_error=False)
-        write = await client.call_tool('projects_write', {'file_path': path, 'content': 'overwritten'}, raise_on_error=False)
-        journal = payload(await client.call_tool('journal_read', {'date': '2026-10-01'}))
-        return read, write, journal
-
-    read, write, journal = run(config.GatewayConfig(servers=(obsidian(),)), steps)
-    assert read.is_error and write.is_error
-    assert journal['content'] == 'went for a run'
-
-
-@pytest.mark.parametrize('path', ['projects/garage/plan.md', 'journal/2026/10/2026-10-01.md', 'wiki', 'wiki/../journal/2026/10/2026-10-01.md'])
-def test_wiki_read_refuses_paths_outside_the_wiki(path):
-    async def steps(client):
-        return await client.call_tool('wiki_read', {'file_path': path}, raise_on_error=False)
-
-    assert run(config.GatewayConfig(servers=(obsidian(),)), steps).is_error
-
-
-def test_projects_write_will_not_create_a_project():
-    async def steps(client):
-        bad = await client.call_tool('projects_write', {'file_path': 'projects/typo/plan.md', 'content': 'x'}, raise_on_error=False)
-        new = await client.call_tool('projects_write', {'file_path': 'projects/garage/notes/new.md', 'content': 'hello'})
-        return bad, new, payload(await client.call_tool('projects_read', {'file_path': 'projects/garage/notes/new.md'}))
-
-    bad, new, read = run(config.GatewayConfig(servers=(obsidian(),)), steps)
-    assert bad.is_error and 'project not found' in bad.content[0].text
-    assert not new.is_error
-    assert read == {'content': 'hello'}
-
-
-def test_guarded_tools_describe_their_arguments():
-    async def steps(client):
-        return {t.name: t for t in await client.list_tools()}
-
-    tools = run(config.GatewayConfig(servers=(obsidian(),)), steps)
-    assert tools['wiki_read'].input_schema['properties']['file_path']['description'] == 'the path, from wiki_list'
-    assert set(tools['projects_write'].input_schema['properties']) == {'file_path', 'content'}
-    assert tools['projects_write'].input_schema['required'] == ['file_path', 'content']
-
-
-def test_wiki_tools_are_read_only():
-    assert all(e.read_only for e in toolkit.CATALOG if e.name.startswith('wiki_'))
-
-
-@pytest.mark.parametrize('name', ['read_file', 'write_file', 'obsidian_write_file', 'obsidian_get_current_date', 'start_daily_notes_session'])
-def test_uncatalogued_and_raw_names_are_not_callable(name):
+@pytest.mark.parametrize('name', ['obsidian_write_file', 'obsidian_read_file', 'obsidian_get_current_date', 'start_daily_notes_session',
+                                  'projects_read', 'wiki_read'])
+def test_unlisted_and_raw_names_are_not_callable(name):
     async def steps(client):
         with pytest.raises(Exception):
             await client.call_tool(name, {})
         return True
 
-    assert run(config.GatewayConfig(servers=(obsidian(),)), steps)
+    assert run(example_cfg(), steps)
 
 
 def test_server_presents_itself_as_claudeplay():
     async def steps(client):
         return client.initialize_result
 
-    result = run(config.GatewayConfig(servers=(obsidian(),)), steps)
+    result = run(example_cfg(), steps)
     assert result.server_info.name == 'claudeplay'
     assert 'productivity toolkit' in result.instructions
 
 
 def test_disabled_backend_simply_removes_its_tools():
-    off = config.ServerConfig(name='obsidian', command=sys.executable, args=(FAKE_OBSIDIAN,), enabled=False)
-
     async def steps(client):
         return [t.name for t in await client.list_tools()]
 
-    assert run(config.GatewayConfig(servers=(off,)), steps) == BUILT_IN
+    assert run(example_cfg(obsidian=False), steps) == BUILT_IN
 
 
 def test_catalog_rejects_duplicate_names():
@@ -205,50 +176,93 @@ def test_catalog_rejects_duplicate_names():
         toolkit.Catalog([entry, entry])
 
 
-def test_catalog_names_are_valid_for_claude():
-    for entry in toolkit.CATALOG:
+def test_example_names_are_valid_for_claude_and_every_tool_is_described():
+    tk = example_toolkit(example_cfg())
+    entries = tk.entries((clock.ENTRY,))
+    assert len(entries) == 1 + 11 + 2 + 3 + 11
+    for entry in entries:
         assert len(entry.name) <= 64 and entry.name.replace('_', '').isalnum() and entry.name.islower()
+        assert entry.description.strip()
 
 
-def test_tasks_tools_route_to_todo_and_never_delete():
-    tasks = [e for e in toolkit.CATALOG if e.name.startswith('tasks_')]
-    assert [e.name for e in tasks] == ['tasks_get_lists', 'tasks_get_tasks', 'tasks_get_completed_between', 'tasks_add_task', 'tasks_update_task',
-                                       'tasks_complete_task', 'tasks_get_steps', 'tasks_add_step', 'tasks_update_step', 'tasks_complete_step']
+def test_example_task_tools_route_to_todo_and_never_delete():
+    tk = example_toolkit(example_cfg())
+    tasks = [e for e in tk.servers['todo'].entries]
+    assert [e.name for e in tasks] == ['tasks_get_lists', 'tasks_get_tasks', 'tasks_get_due_today', 'tasks_get_completed_between', 'tasks_add_task',
+                                       'tasks_update_task', 'tasks_complete_task', 'tasks_get_steps', 'tasks_add_step', 'tasks_update_step',
+                                       'tasks_complete_step']
     assert all(e.source.startswith('todo_') and 'delete' not in e.source for e in tasks)
 
 
-TASKS = config.TasksConfig(common_lists={'Chores': 'id-chores', 'Health': 'id-health', 'Grocery': 'id-grocery'},
-                           due_today=('Chores', 'Health'))
+def test_example_main_lists_are_written_once_and_shared_by_due_today_and_completed():
+    entries = {e.name: e for e in example_toolkit(example_cfg()).servers['todo'].entries}
+    assert entries['tasks_get_due_today'].fixed['list_ids'] == entries['tasks_get_completed_between'].defaults['list_ids']
+    assert entries['tasks_get_due_today'].fixed['list_ids']
 
 
-def todo_config(tasks: config.TasksConfig) -> config.GatewayConfig:
-    todo = config.ServerConfig(name='todo', command=sys.executable, args=(str(Path(__file__).parent / 'fake_todo.py'),))
-    return config.GatewayConfig(servers=(todo,), tasks=tasks)
+def test_example_instructions_cover_the_common_workflows():
+    tk = example_toolkit(example_cfg())
+    text = '\n'.join([tk.instructions, *(s.instructions for s in tk.servers.values())])
+    for tool in ('tasks_get_due_today', 'tasks_get_completed_between', 'journal_add_note', 'journal_read', 'write_file', 'bookmarks_add'):
+        assert tool in text
+    assert 'web_fetch' not in text and 'projects_write' not in text and 'wiki_read' not in text
 
 
-def test_common_list_ids_are_published_with_a_note_about_other_lists():
+# the tasks tools, as a toolkit.yaml writes them: the main lists are written once and shared through an anchor
+
+TODO_TOOLKIT = '''
+servers:
+  todo:
+    instructions: the main lists are Chores and Health.
+    tools:
+      - source: get_lists
+        name: tasks_get_lists
+        description: >-
+          List the task lists. Commonly used lists and their ids: Chores = id-chores; Health = id-health.
+        read_only: true
+      - source: get_tasks_due_today
+        name: tasks_get_due_today
+        description: Find open tasks due today in the main lists, Chores and Health.
+        read_only: true
+        fixed: {list_ids: &main [id-chores, id-health]}
+      - source: get_tasks_by_completed_date_range
+        name: tasks_get_completed_between
+        description: Find tasks completed between two dates.
+        read_only: true
+        args: {list_ids: 'the list ids to check; the main lists if left out'}
+        defaults: {list_ids: *main}
+      - source: get_steps
+        name: tasks_get_steps
+        description: List a task's steps.
+        read_only: true
+'''
+
+
+def todo_cfg() -> config.GatewayConfig:
+    return config.GatewayConfig(servers=(server('todo', FAKE_TODO),))
+
+
+def test_common_list_ids_are_published_in_the_description():
     async def steps(client):
         return {t.name: t for t in await client.list_tools()}, client.initialize_result
 
-    tools, result = run(todo_config(TASKS), steps)
-    description = tools['tasks_get_lists'].description
-    for name, list_id in TASKS.common_lists.items():
-        assert f'{name} = {list_id}' in description
-    assert 'other lists' in description
-    assert 'tasks_get_lists description' in result.instructions
+    cfg = todo_cfg()
+    tools, result = run(cfg, steps, from_text(TODO_TOOLKIT, cfg))
+    assert 'Chores = id-chores; Health = id-health' in tools['tasks_get_lists'].description
+    assert 'the main lists are Chores and Health.' in result.instructions
 
 
-def test_tasks_due_today_always_uses_the_configured_lists():
+def test_tasks_due_today_always_uses_the_listed_lists():
     async def steps(client):
         tool = next(t for t in await client.list_tools() if t.name == 'tasks_get_due_today')
         ok = payload(await client.call_tool('tasks_get_due_today', {}))
         bad = await client.call_tool('tasks_get_due_today', {'list_ids': ['id-other']}, raise_on_error=False)
         return tool, ok, bad
 
-    tool, ok, bad = run(todo_config(TASKS), steps)
+    cfg = todo_cfg()
+    tool, ok, bad = run(cfg, steps, from_text(TODO_TOOLKIT, cfg))
     assert ok['list_ids'] == ['id-chores', 'id-health']
     assert not tool.input_schema.get('properties')
-    assert 'Chores, Health' in tool.description and 'Grocery' not in tool.description
     assert bad.is_error
 
 
@@ -259,18 +273,28 @@ def test_completed_search_defaults_to_the_main_lists_and_takes_others():
         other = payload(await client.call_tool('tasks_get_completed_between', {'start_date': '2026-11-01', 'list_ids': ['id-grocery']}))
         return tool, main, other
 
-    tool, main, other = run(todo_config(TASKS), steps)
+    cfg = todo_cfg()
+    tool, main, other = run(cfg, steps, from_text(TODO_TOOLKIT, cfg))
     assert main['list_ids'] == ['id-chores', 'id-health']
     assert other['list_ids'] == ['id-grocery']
     assert tool.input_schema['required'] == ['start_date']
-    assert 'Chores, Health' in tool.description
+    assert tool.input_schema['properties']['list_ids']['description'] == 'the list ids to check; the main lists if left out'
 
 
-def test_without_task_config_the_completed_search_needs_list_ids():
+def test_without_defaults_the_completed_search_needs_list_ids():
+    text = '''
+servers:
+  todo:
+    tools:
+      - source: get_tasks_by_completed_date_range
+        description: d
+        read_only: true
+'''
     async def steps(client):
-        return next(t for t in await client.list_tools() if t.name == 'tasks_get_completed_between')
+        return next(t for t in await client.list_tools() if t.name == 'get_tasks_by_completed_date_range')
 
-    tool = run(todo_config(config.TasksConfig()), steps)
+    cfg = todo_cfg()
+    tool = run(cfg, steps, from_text(text, cfg))
     assert set(tool.input_schema['required']) == {'list_ids', 'start_date'}
 
 
@@ -278,32 +302,257 @@ def test_steps_route_to_todo():
     async def steps(client):
         return payload(await client.call_tool('tasks_get_steps', {'task_id': 'task-1', 'list_id': 'id-chores'}))
 
-    result = run(todo_config(TASKS), steps)
+    cfg = todo_cfg()
+    result = run(cfg, steps, from_text(TODO_TOOLKIT, cfg))
     assert result['task_id'] == 'task-1'
     assert result['steps'][0]['name'] == 'buy primer'
 
 
-def test_without_task_config_nothing_account_specific_is_published():
+# instructions follow the enabled servers
+
+def instructions_of(cfg: config.GatewayConfig) -> str:
     async def steps(client):
-        return {t.name: t for t in await client.list_tools()}, client.initialize_result
+        return client.initialize_result.instructions
 
-    tools, result = run(todo_config(config.TasksConfig()), steps)
-    assert 'tasks_get_due_today' not in tools
-    assert 'Commonly used' not in tools['tasks_get_lists'].description
-    assert result.instructions == toolkit.INSTRUCTIONS
+    return run(cfg, steps)
 
 
-def test_instructions_cover_the_common_workflows():
-    assert 'narrative' not in toolkit.INSTRUCTIONS
-    workflows = toolkit.INSTRUCTIONS.split('common workflows:')[1]
-    for tool in ('tasks_get_due_today', 'tasks_get_completed_between', 'journal_add_note', 'journal_read', 'projects_write'):
-        assert tool in workflows
-    assert 'bookmarks' in workflows
+def test_instructions_are_the_top_level_then_each_enabled_server_in_config_order():
+    both = instructions_of(example_cfg(obsidian=True, todo=True))
+    assert both.startswith("claudeplay is a personal productivity toolkit")
+    assert both.index('the journal holds one entry per day') < both.index("the tasks tools work on the user's task lists")
+    assert 'bookmarks are private' not in both and 'the pc tools act' not in both
 
+
+def test_a_disabled_servers_instructions_are_left_out():
+    only_obsidian = instructions_of(example_cfg(obsidian=True, todo=False))
+    assert 'the journal holds one entry per day' in only_obsidian
+    assert 'tasks tools' not in only_obsidian
+    nothing = instructions_of(example_cfg(obsidian=False, todo=False))
+    assert nothing.startswith('claudeplay is a personal productivity toolkit')
+    assert 'the journal holds one entry per day' not in nothing
+
+
+def test_config_order_not_file_order_sets_the_instructions_order():
+    text = '''
+instructions: top
+servers:
+  a:
+    instructions: from a
+  b:
+    instructions: from b
+'''
+    cfg = config.GatewayConfig(servers=(server('b'), server('a')))
+    assert from_text(text, cfg).instructions_for(cfg) == 'top\n\nfrom b\n\nfrom a'
+    off = config.GatewayConfig(servers=(server('b', enabled=False), server('a')))
+    assert from_text(text, off).instructions_for(off) == 'top\n\nfrom a'
+
+
+# validation: the config is the catalog, so mistakes must fail loudly
+
+CFG_AB = config.GatewayConfig(servers=(server('a'), server('b')))
+
+
+@pytest.mark.parametrize('text, where', [
+    ('servers:\n  a:\n    tools:\n      - description: d\n', 'servers.a.tools.0.source'),
+    ('servers:\n  a:\n    tools:\n      - source: s\n', 'servers.a.tools.0.description'),
+    ('servers:\n  a:\n    tools:\n      - source: s\n        description: d\n        raed_only: true\n', 'servers.a.tools.0.raed_only'),
+    ('servers:\n  a:\n    tools:\n      - source: s\n        description: d\n        name: has space\n', 'servers.a.tools.0.name'),
+    ('servers:\n  a:\n    tools:\n      - source: s\n        description: d\n        read_only: yes please\n', 'servers.a.tools.0.read_only'),
+    ('servers:\n  a:\n    instruction: x\n', 'servers.a.instruction'),
+    ('servers:\n  a:\n    tools:\n      - source: s\n        description: d\n        args: [date]\n', 'servers.a.tools.0.args'),
+    ('instructoins: x\n', 'instructoins'),
+])
+def test_bad_toolkit_errors_name_the_file_and_key_path(text, where):
+    with pytest.raises(config.ConfigError) as e:
+        toolkit.parse(text, CFG_AB, (clock.ENTRY,), 'toolkit.yaml')
+    assert f'toolkit.yaml: {where}' in str(e.value)
+
+
+def test_toolkit_errors_never_quote_values():
+    text = 'servers:\n  a:\n    tools:\n      - source: s\n        description: d\n        read_only: hunter2\n        extra_hunter2: hunter2\n'
+    with pytest.raises(config.ConfigError) as e:
+        toolkit.parse(text, CFG_AB, (), 'toolkit.yaml')
+    assert 'hunter2' not in str(e.value).replace('extra_hunter2', '')
+    with pytest.raises(config.ConfigError) as e:
+        toolkit.parse('a: hunter2\na: other-hunter2\n', CFG_AB, (), 'toolkit.yaml')
+    assert 'hunter2' not in str(e.value)
+    with pytest.raises(config.ConfigError) as e:
+        toolkit.parse('servers: [unclosed hunter2\n', CFG_AB, (), 'toolkit.yaml')
+    assert 'hunter2' not in str(e.value) and 'line' in str(e.value)
+
+
+def test_a_toolkit_server_missing_from_the_config_is_an_error():
+    with pytest.raises(config.ConfigError, match='servers.c: not a server in config.yaml'):
+        toolkit.parse('servers:\n  c: {}\n', CFG_AB, (), 'toolkit.yaml')
+
+
+def test_duplicate_public_names_across_servers_are_an_error():
+    text = '''
+servers:
+  a:
+    tools:
+      - {source: one, name: shared, description: d}
+  b:
+    tools:
+      - {source: two, name: shared, description: d}
+'''
+    with pytest.raises(config.ConfigError, match=r'servers\.b\.tools\.0: the name shared is already used by servers\.a'):
+        from_text(text, CFG_AB)
+
+
+def test_the_default_name_is_the_backend_name_so_two_servers_can_clash_on_it():
+    text = 'servers:\n  a:\n    tools:\n      - {source: read, description: d}\n  b:\n    tools:\n      - {source: read, description: d}\n'
+    with pytest.raises(config.ConfigError, match='the name read is already used'):
+        from_text(text, CFG_AB)
+
+
+def test_a_name_clashing_with_the_built_in_tool_is_an_error():
+    text = 'servers:\n  a:\n    tools:\n      - {source: now, name: get_current_timestamp, description: d}\n'
+    with pytest.raises(config.ConfigError, match='already used by the built-in tools'):
+        from_text(text, CFG_AB)
+
+
+def test_the_name_defaults_to_the_backend_name_and_the_source_is_prefixed_with_the_server():
+    tk = from_text('servers:\n  a:\n    tools:\n      - {source: read_file, description: d, read_only: true}\n', CFG_AB)
+    entry = tk.servers['a'].entries[0]
+    assert (entry.name, entry.source, entry.read_only, entry.destructive, entry.open_world) == ('read_file', 'a_read_file', True, False, False)
+
+
+def test_a_configured_server_with_no_toolkit_section_is_allowed_with_a_warning(caplog):
+    with caplog.at_level(logging.WARNING, logger='claudeplay.toolkit'):
+        tk = from_text('servers:\n  a: {}\n', CFG_AB)
+    assert tk.counts() == {'a': 0}
+    assert 'server b has no section' in caplog.text and 'server a ' not in caplog.text
+
+
+def test_an_empty_toolkit_is_valid_and_exposes_only_the_built_in_tool():
+    tk = from_text('', CFG_AB)
+    assert tk.servers == {} and tk.entries((clock.ENTRY,)) == (clock.ENTRY,)
+
+
+def test_load_reads_toolkit_yaml_next_to_the_config_and_names_a_missing_file(tmp_path):
+    cfg_path = tmp_path / 'config.yaml'
+    with pytest.raises(config.ConfigError, match='toolkit not found'):
+        toolkit.load(cfg_path, CFG_AB)
+    (tmp_path / 'toolkit.yaml').write_text('servers:\n  a:\n    tools:\n      - {source: s, description: d}\n')
+    assert toolkit.load(cfg_path, CFG_AB).counts() == {'a': 1}
+
+
+def test_the_shipped_example_is_valid_against_the_example_config():
+    example = HERE.parent / 'config.example.yaml'
+    cfg = config.parse(example.read_text(encoding='utf-8'), example.name)
+    tk = toolkit.parse(EXAMPLE.read_text(encoding='utf-8'), cfg, (clock.ENTRY,), EXAMPLE.name)
+    assert tk.counts() == {'obsidian': 11, 'windows': 2, 'pinboard': 3, 'todo': 11}
+
+
+# probe-time checks against what the backends really list
+
+def listed(*names_and_params: tuple[str, list[str]]):
+    ''' tools as a backend lists them: a name and the arguments it takes '''
+    return [SimpleNamespace(name=n, input_schema={'properties': {p: {} for p in params}}) for n, params in names_and_params]
+
+
+def entry(**kw) -> toolkit.Entry:
+    return toolkit.Entry(**({'name': 'x', 'source': 'srv_x', 'description': 'd'} | kw))
+
+
+def test_check_backend_accepts_a_matching_toolkit():
+    tools = listed(('x', ['date', 'limit', 'secret']))
+    assert toolkit.check_backend('srv', tools, [entry(args={'date': 'd'}, hide=('secret',), fixed={'secret': 1}, defaults={'limit': 5})]) == []
+
+
+def test_check_backend_names_a_missing_tool_and_each_unknown_argument():
+    tools = listed(('x', ['date']))
+    problems = toolkit.check_backend('srv', tools, [
+        entry(name='gone', source='srv_renamed'),
+        entry(args={'dat': 'd'}, hide=('h',), fixed={'f': 1}, defaults={'d': 2}),
+    ])
+    assert problems == [
+        'gone: backend tool renamed not found',
+        'x: args names dat, which x does not take',
+        'x: hide names h, which x does not take',
+        'x: fixed names f, which x does not take',
+        'x: defaults names d, which x does not take',
+    ]
+
+
+def test_check_backend_never_includes_values():
+    problems = toolkit.check_backend('srv', listed(('x', [])), [entry(fixed={'secret_arg': 'hunter2'}, args={'other': 'hunter2'})])
+    assert problems and all('hunter2' not in p for p in problems)
+
+
+def probed(cfg, text):
+    ''' build the gateway from toolkit text, let the probes finish, and return the tools claude sees and the board '''
+    async def go():
+        board = gateway.StatusBoard(None, cfg.endpoint_url)
+        gw, board = gateway.build(cfg, from_text(text, cfg), board=board)
+        async with Client(gw, mode='legacy') as client:
+            names = [t.name for t in await client.list_tools()]
+            for _ in range(100):
+                if not any(s.state == gateway.STARTING for s in board.servers.values()):
+                    break
+                await asyncio.sleep(0.1)
+            return names, board, board.overall()
+
+    return asyncio.run(go())
+
+
+def obsidian_cfg() -> config.GatewayConfig:
+    return config.GatewayConfig(servers=(server('obsidian', FAKE_OBSIDIAN),))
+
+
+def test_a_renamed_backend_tool_marks_the_server_failed_naming_the_tool():
+    text = 'servers:\n  obsidian:\n    tools:\n      - {source: read_journal_entry, name: journal_read, description: d}\n      - {source: read_journal_entry_v2, name: journal_read_v2, description: d}\n'
+    names, board, _ = probed(obsidian_cfg(), text)
+    assert board.servers['obsidian'].state == gateway.FAILED
+    assert board.servers['obsidian'].error == 'toolkit.yaml: journal_read_v2: backend tool read_journal_entry_v2 not found'
+    # the tools that do match are still presented, and the probe saw the backend's tools
+    assert names == ['get_current_timestamp', 'journal_read'] and board.servers['obsidian'].tools > 0
+
+
+def test_an_unknown_argument_marks_the_server_failed_naming_the_tool_and_argument():
+    text = 'servers:\n  obsidian:\n    tools:\n      - {source: read_journal_entry, name: journal_read, description: d, args: {dat: when}, fixed: {zzz: 1}}\n'
+    names, board, overall = probed(obsidian_cfg(), text)
+    status = board.servers['obsidian']
+    assert status.state == gateway.FAILED
+    assert status.error == 'toolkit.yaml: journal_read: args names dat, which read_journal_entry does not take (and 1 more)'
+    assert overall == 'degraded'
+    # presentation stays tolerant: the real argument is still there, the unknown ones are ignored
+    assert 'journal_read' in names
+
+
+def test_a_matching_toolkit_leaves_the_server_ok():
+    text = 'servers:\n  obsidian:\n    tools:\n      - {source: read_journal_entry, name: journal_read, description: d, args: {date: when}}\n'
+    _, board, _ = probed(obsidian_cfg(), text)
+    assert board.servers['obsidian'].state == gateway.OK and board.servers['obsidian'].error == ''
+
+
+def test_the_shipped_example_matches_the_fake_backends_it_overlaps():
+    ''' every entry the fakes can answer for names real tools and arguments '''
+    cfg = example_cfg(obsidian=True, todo=True)
+
+    async def go():
+        board = gateway.StatusBoard(None, cfg.endpoint_url)
+        gw, board = gateway.build(cfg, example_toolkit(cfg), board=board)
+        async with Client(gw, mode='legacy') as client:
+            await client.list_tools()
+            for _ in range(100):
+                if not any(s.state == gateway.STARTING for s in board.servers.values()):
+                    break
+                await asyncio.sleep(0.1)
+            return board
+
+    board = asyncio.run(go())
+    # the fake obsidian has every tool the example lists for obsidian, with the arguments it names
+    assert board.servers['obsidian'].state == gateway.OK, board.servers['obsidian'].error
+    # the fake todo has only some, so the only problem is missing tools, never wrong arguments
+    assert board.servers['todo'].state == gateway.FAILED and 'not found' in board.servers['todo'].error
+
+
+# the catalog transform on its own
 
 def test_a_changed_default_is_visible_sent_and_can_be_overridden():
-    from fastmcp import FastMCP
-
     backend = FastMCP('backend')
 
     @backend.tool
@@ -326,8 +575,6 @@ def test_a_changed_default_is_visible_sent_and_can_be_overridden():
 
 
 def test_hidden_arguments_are_invisible_and_cannot_be_overridden():
-    from fastmcp import FastMCP
-
     backend = FastMCP('backend')
 
     @backend.tool
@@ -350,3 +597,32 @@ def test_hidden_arguments_are_invisible_and_cannot_be_overridden():
     assert tool.annotations.destructive_hint is True and tool.annotations.open_world_hint is True
     assert ok.content[0].text == 'u default'
     assert bad.is_error
+
+
+def test_presenting_ignores_arguments_the_backend_does_not_have():
+    backend = FastMCP('backend')
+
+    @backend.tool
+    def fetch(url: str) -> str:
+        return url
+
+    entry = toolkit.Entry(name='web', source='fetch', description='d', args={'url': 'the url', 'gone': 'x'}, hide=('gone2',), fixed={'gone3': 1}, defaults={'gone4': 1})
+    backend.add_transform(toolkit.Catalog((entry,)))
+
+    async def steps():
+        async with Client(backend) as client:
+            return (await client.list_tools())[0], await client.call_tool('web', {'url': 'u'})
+
+    tool, ok = asyncio.run(steps())
+    assert list(tool.input_schema['properties']) == ['url'] and ok.content[0].text == 'u'
+
+
+def test_raw_mode_ignores_the_toolkit_and_shows_every_backend_tool():
+    async def go():
+        gw, _ = gateway.build(obsidian_cfg(), raw=True)
+        async with Client(gw, mode='legacy') as client:
+            return {t.name for t in await client.list_tools()}
+
+    names = asyncio.run(go())
+    assert {'obsidian_read_file', 'obsidian_start_daily_notes_session'} <= names
+    assert 'get_current_timestamp' not in names

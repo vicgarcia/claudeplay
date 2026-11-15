@@ -24,6 +24,7 @@ def write_config(tmp_path, port: int):
         f"servers:\n  a:\n    command: '{sys.executable}'\n    args: ['{FAKE_SERVER}']\n"
         f"  off:\n    command: '{sys.executable}'\n    enabled: false\n"
     )
+    (tmp_path / 'toolkit.yaml').write_text('servers:\n  a: {}\n  off: {}\n')
     return path
 
 
