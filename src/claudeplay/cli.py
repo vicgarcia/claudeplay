@@ -57,7 +57,12 @@ def cmd_check(args: argparse.Namespace) -> int:
     counts = tk.counts()
     print('checks:')
     for server in cfg.servers:
-        listed = f'{counts[server.name]} tools listed' if server.name in counts else 'no toolkit section, exposes nothing'
+        if server.name not in counts:
+            listed = 'no toolkit section, exposes nothing'
+        elif tk.servers[server.name].expose_all:
+            listed = f'every tool exposed, {counts[server.name]} of them changed'
+        else:
+            listed = f'{counts[server.name]} tools listed'
         if not server.enabled:
             print(f'  {server.name}: disabled, {listed}')
             continue

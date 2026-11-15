@@ -2,7 +2,8 @@
 
 from fastmcp import FastMCP
 
-mcp = FastMCP('fake-obsidian')
+FAKE_INSTRUCTIONS = 'fake obsidian instructions: call get_todays_date, then add_note_to_journal_entry.'
+mcp = FastMCP('fake-obsidian', instructions=FAKE_INSTRUCTIONS)
 journal: dict[str, str] = {'2026-10-01': 'went for a run'}
 files: dict[str, str] = {
     'projects/garage/plan.md': 'shelves',
@@ -15,7 +16,7 @@ TODAY = '2026-10-29'
 
 @mcp.tool()
 def get_todays_date() -> dict:
-    ''' not in the catalog: claudeplay has its own clock '''
+    ''' today's date in the user's time zone. '''
     return {'date': TODAY}
 
 

@@ -1,4 +1,8 @@
-'''the claudeplay toolkit: the tool surface presented to claude, read from toolkit.yaml, over the mounted backends'''
+'''the claudeplay toolkit: the tool surface presented to claude, read from toolkit.yaml, over the mounted backends
+
+by default a tool passes through exactly as its backend describes it; toolkit.yaml says which tools are exposed
+and, where the backend's own text is not right for you, what to change
+'''
 
 import logging
 from collections.abc import Sequence
@@ -24,12 +28,17 @@ _NAME_PATTERN = r'^[A-Za-z0-9_-]{1,64}$'
 
 @dataclass(frozen=True)
 class Entry:
-    ''' one presented tool: its public name, the backend tool it calls, and how it is described '''
+    ''' one presented tool: its public name, the backend tool it calls, and what is changed about it
+
+    anything left unset passes the backend's own text and annotations through unchanged
+    '''
     name: str
     # the tool as mounted on the gateway, <server>_<backend name>
     source: str
-    description: str
-    read_only: bool = False
+    # replaces the backend's description; description_append is added after whichever description is used
+    description: str | None = None
+    description_append: str = ''
+    read_only: bool | None = None
     args: dict[str, str] = field(default_factory=dict)
     # hidden backend arguments left at the backend's default; they must be optional in the backend
     hide: tuple[str, ...] = ()
@@ -37,15 +46,19 @@ class Entry:
     fixed: dict[str, Any] = field(default_factory=dict)
     # visible arguments with a different default from the backend's
     defaults: dict[str, Any] = field(default_factory=dict)
-    destructive: bool = False
+    destructive: bool | None = None
     # true when the tool reaches beyond the user's own data
-    open_world: bool = False
+    open_world: bool | None = None
 
 
 @dataclass(frozen=True)
 class ServerToolkit:
     ''' what one server contributes: its tools, and instructions sent only while it is enabled '''
-    instructions: str = ''
+    # replaces the instructions the backend sends ('' sends none); None passes the backend's own through
+    instructions: str | None = None
+    instructions_append: str = ''
+    # every backend tool not listed is exposed too, unchanged and under its own name
+    expose_all: bool = False
     entries: tuple[Entry, ...] = ()
 
 
@@ -56,15 +69,27 @@ class Toolkit:
     servers: dict[str, ServerToolkit] = field(default_factory=dict)
 
     def entries(self, built_in: Sequence[Entry] = ()) -> tuple[Entry, ...]:
-        ''' every presented tool: the built-in ones first, then each server's in file order '''
+        ''' every listed tool: the built-in ones first, then each server's in file order '''
         return (*built_in, *(e for s in self.servers.values() for e in s.entries))
 
-    def instructions_for(self, cfg: config.GatewayConfig) -> str:
-        ''' the top-level instructions, then those of each enabled server in config order '''
+    def passthrough(self) -> tuple[str, ...]:
+        ''' the servers whose unlisted tools are exposed too '''
+        return tuple(name for name, s in self.servers.items() if s.expose_all)
+
+    def instructions_for(self, cfg: config.GatewayConfig, backend: dict[str, str] | None = None) -> str:
+        ''' the top-level instructions, then each enabled server's in config order
+
+        a server's own are the backend's instructions (read when it was probed) unless toolkit.yaml replaces them,
+        then its instructions_append. a server that exposes nothing adds nothing
+        '''
+        backend = backend or {}
         parts = [self.instructions]
         for server in cfg.servers:
-            if server.enabled and server.name in self.servers:
-                parts.append(self.servers[server.name].instructions)
+            section = self.servers.get(server.name)
+            if not server.enabled or section is None or not (section.entries or section.expose_all):
+                continue
+            own = backend.get(server.name, '') if section.instructions is None else section.instructions
+            parts += [own, section.instructions_append]
         return '\n\n'.join(p.strip() for p in parts if p.strip())
 
     def counts(self) -> dict[str, int]:
@@ -74,10 +99,11 @@ class Toolkit:
 class _EntryModel(config.Model):
     source: str = Field(min_length=1)
     name: str | None = Field(None, pattern=_NAME_PATTERN)
-    description: str = Field(min_length=1)
-    read_only: bool = False
-    destructive: bool = False
-    open_world: bool = False
+    description: str | None = Field(None, min_length=1)
+    description_append: str = ''
+    read_only: bool | None = None
+    destructive: bool | None = None
+    open_world: bool | None = None
     args: dict[str, str] = {}
     hide: list[str] = []
     fixed: dict[str, Any] = {}
@@ -85,7 +111,9 @@ class _EntryModel(config.Model):
 
 
 class _ServerModel(config.Model):
-    instructions: str = ''
+    instructions: str | None = None
+    instructions_append: str = ''
+    expose_all: bool = False
     tools: list[_EntryModel] = []
 
 
@@ -124,6 +152,7 @@ def parse(text: str, cfg: config.GatewayConfig, built_in: Sequence[Entry] = (), 
                 name=public,
                 source=f'{server_name}_{entry.source}',
                 description=entry.description,
+                description_append=entry.description_append,
                 read_only=entry.read_only,
                 args=dict(entry.args),
                 hide=tuple(entry.hide),
@@ -132,11 +161,17 @@ def parse(text: str, cfg: config.GatewayConfig, built_in: Sequence[Entry] = (), 
                 destructive=entry.destructive,
                 open_world=entry.open_world,
             ))
-        servers[server_name] = ServerToolkit(instructions=server.instructions, entries=tuple(entries))
+        servers[server_name] = ServerToolkit(
+            instructions=server.instructions,
+            instructions_append=server.instructions_append,
+            expose_all=server.expose_all,
+            entries=tuple(entries),
+        )
 
     for server in cfg.servers:
-        if server.name not in servers:
-            log.warning('server %s has no section in %s, so it exposes nothing', server.name, name)
+        section = servers.get(server.name)
+        if section is None or not (section.entries or section.expose_all):
+            log.warning('server %s has no tools listed in %s (and no expose_all), so it exposes nothing', server.name, name)
     return Toolkit(instructions=model.instructions, servers=servers)
 
 
@@ -150,7 +185,7 @@ def load(config_path: Path | None, cfg: config.GatewayConfig, built_in: Sequence
     return parse(text, cfg, built_in, path.name)
 
 
-def check_backend(server: str, tools: Sequence[Any], entries: Sequence[Entry]) -> list[str]:
+def check_backend(server: str, tools: Sequence[Any], entries: Sequence[Entry], expose_all: bool = False, taken: Sequence[str] = ()) -> list[str]:
     ''' problems between a server's entries and the tools it actually lists, naming tools and arguments only
 
     a renamed backend tool, or an argument it no longer takes, would otherwise disappear without a word
@@ -169,22 +204,37 @@ def check_backend(server: str, tools: Sequence[Any], entries: Sequence[Entry]) -
             for key in keys:
                 if key not in known:
                     problems.append(f'{entry.name}: {kind} names {key}, which {source} does not take')
+    if expose_all:
+        # an unlisted tool is exposed under its own name, which must not be one already in use
+        listed = {e.source.removeprefix(prefix) for e in entries}
+        for tool in tools:
+            if tool.name not in listed and tool.name in taken:
+                problems.append(f'{tool.name}: backend tool is exposed under a name already used by another tool')
     return problems
 
 
-def _annotations(entry: Entry) -> ToolAnnotations:
-    return ToolAnnotations(
-        title=entry.name.replace('_', ' '),
-        read_only_hint=entry.read_only,
-        destructive_hint=entry.destructive,
-        open_world_hint=entry.open_world,
-    )
+def _annotations(entry: Entry, backend: ToolAnnotations | None) -> ToolAnnotations | None:
+    ''' the backend's annotations with whatever toolkit.yaml sets on top; none at all if neither says anything '''
+    def pick(mine: bool | None, theirs: str) -> bool | None:
+        return mine if mine is not None else getattr(backend, theirs, None)
+
+    values = {
+        'read_only_hint': pick(entry.read_only, 'read_only_hint'),
+        'destructive_hint': pick(entry.destructive, 'destructive_hint'),
+        'open_world_hint': pick(entry.open_world, 'open_world_hint'),
+        'idempotent_hint': getattr(backend, 'idempotent_hint', None),
+    }
+    if backend is None and all(v is None for v in values.values()):
+        return None
+    title = getattr(backend, 'title', None) or entry.name.replace('_', ' ')
+    return ToolAnnotations(title=title, **values)
 
 
 class Catalog(Transform):
-    ''' exposes only the listed tools, renamed and re-described; everything else, including prompts and resources, is hidden '''
+    ''' exposes the listed tools, and every tool of an expose_all server, with the changes toolkit.yaml lists;
+    everything else, including prompts and resources, is hidden '''
 
-    def __init__(self, entries: Sequence[Entry]):
+    def __init__(self, entries: Sequence[Entry], passthrough: Sequence[str] = ()):
         names = [e.name for e in entries]
         if len(set(names)) != len(names):
             raise ValueError('duplicate tool names in catalog')
@@ -193,6 +243,7 @@ class Catalog(Transform):
         for entry in entries:
             self._by_source.setdefault(entry.source, []).append(entry)
         self._by_name = {e.name: e for e in entries}
+        self._passthrough = tuple(passthrough)
 
     def _present(self, tool: Tool, entry: Entry) -> Tool:
         # only describe arguments the backend actually has; the gateway reports the rest when it probes the server
@@ -201,25 +252,55 @@ class Catalog(Transform):
         transforms = {a: ArgTransform(description=d, **defaults.get(a, {})) for a, d in entry.args.items() if a in known}
         transforms |= {a: ArgTransform(hide=True) for a in entry.hide if a in known}
         transforms |= {a: ArgTransform(hide=True, default=v) for a, v in entry.fixed.items() if a in known}
+        # a default for an argument with no description of its own still has to reach the schema
+        transforms |= {a: ArgTransform(default=v) for a, v in entry.defaults.items() if a in known and a not in transforms}
+        description = entry.description if entry.description is not None else tool.description
+        if entry.description_append:
+            description = f'{description or ""}\n\n{entry.description_append}'.strip()
         return Tool.from_tool(
             tool,
             name=entry.name,
-            description=entry.description,
-            annotations=_annotations(entry),
+            description=description,
+            annotations=_annotations(entry, tool.annotations),
             transform_args=transforms,
         )
+
+    def _passthrough_entry(self, source: str) -> Entry | None:
+        ''' the unchanged entry for a tool of an expose_all server, unless it is listed under some name already '''
+        if source in self._by_source:
+            return None
+        for server in self._passthrough:
+            if source.startswith(f'{server}_'):
+                return Entry(name=source.removeprefix(f'{server}_'), source=source)
+        return None
 
     async def list_tools(self, tools: Sequence[Tool]) -> Sequence[Tool]:
         presented = [self._present(t, e) for t in tools for e in self._by_source.get(t.name, ())]
         order = {e.name: i for i, e in enumerate(self._by_name.values())}
-        return sorted(presented, key=lambda t: order[t.name])
+        presented.sort(key=lambda t: order[t.name])
+        taken = {t.name for t in presented}
+        for tool in tools:
+            entry = self._passthrough_entry(tool.name)
+            if entry is None:
+                continue
+            if entry.name in taken:
+                log.warning('tool %s of an expose_all server is hidden: its name is already used', entry.name)
+                continue
+            taken.add(entry.name)
+            presented.append(self._present(tool, entry))
+        return presented
 
     async def get_tool(self, name: str, call_next: GetToolNext, *, version=None) -> Tool | None:
         entry = self._by_name.get(name)
-        if entry is None:
-            return None
-        tool = await call_next(entry.source, version=version)
-        return self._present(tool, entry) if tool is not None else None
+        if entry is not None:
+            tool = await call_next(entry.source, version=version)
+            return self._present(tool, entry) if tool is not None else None
+        for server in self._passthrough:
+            passthrough = self._passthrough_entry(f'{server}_{name}')
+            tool = await call_next(passthrough.source, version=version) if passthrough else None
+            if tool is not None:
+                return self._present(tool, passthrough)
+        return None
 
     async def list_resources(self, resources):
         return []
