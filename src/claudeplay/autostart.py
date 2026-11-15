@@ -37,6 +37,8 @@ def install(target: Path | None = None) -> Path:
         raise FileNotFoundError(f'{target} not found; install claudeplay as a uv tool first')
     link = shortcut_path()
     link.parent.mkdir(parents=True, exist_ok=True)
+    # start from a new shortcut: saving over an old one keeps any fields this does not set
+    link.unlink(missing_ok=True)
     # single-quoted powershell literals: escape embedded quotes only, paths are not interpreted
     esc = lambda p: str(p).replace("'", "''")
     script = (

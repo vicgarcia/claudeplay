@@ -172,6 +172,24 @@ def test_autostart_install_and_uninstall(tmp_path, monkeypatch):
     assert autostart.uninstall() is False
 
 
+def test_autostart_install_replaces_an_old_shortcut_entirely(tmp_path, monkeypatch):
+    monkeypatch.setenv('CLAUDEPLAY_STARTUP_DIR', str(tmp_path / 'startup'))
+    link = autostart.shortcut_path()
+    link.parent.mkdir()
+    old = tmp_path / 'old' / 'pythonw.exe'
+    old.parent.mkdir()
+    old.write_bytes(b'')
+    winutil.run_hidden(['powershell', '-NoProfile', '-Command',
+        f"$s = (New-Object -ComObject WScript.Shell).CreateShortcut('{link}'); $s.TargetPath = '{old}'; $s.Arguments = '-m claudeplay tray'; $s.Save()"])
+    target = tmp_path / 'bin' / 'claudeplay-tray.exe'
+    target.parent.mkdir()
+    target.write_bytes(b'')
+    autostart.install(target)
+    shortcut = winutil.run_hidden(['powershell', '-NoProfile', '-Command',
+        f"$s = (New-Object -ComObject WScript.Shell).CreateShortcut('{link}'); $s.TargetPath + '|' + $s.Arguments"]).stdout.strip()
+    assert shortcut == f'{target}|'
+
+
 def test_autostart_refuses_missing_target(tmp_path, monkeypatch):
     monkeypatch.setenv('CLAUDEPLAY_STARTUP_DIR', str(tmp_path / 'startup'))
     with pytest.raises(FileNotFoundError):
