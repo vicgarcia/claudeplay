@@ -6,7 +6,7 @@ import secrets
 import sys
 from pathlib import Path
 
-from . import clock, config, logs, toolkit
+from . import config, logs, toolkit
 
 
 LOOPBACK = {'127.0.0.1', 'localhost', '::1'}
@@ -25,7 +25,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
     logs.setup(console=args.console)
     cfg = _load(args.config)
     # --raw is for debugging a backend and needs no toolkit
-    tk = None if args.raw else toolkit.load(_path(args.config), cfg, (clock.ENTRY,))
+    tk = None if args.raw else toolkit.load(_path(args.config), cfg)
     if cfg.auth is not None:
         from . import auth
         if config.ensure_signing_key(_path(args.config)):
@@ -52,7 +52,7 @@ def cmd_check(args: argparse.Namespace) -> int:
     print(f'config:   {path}')
     for line in config.describe(cfg):
         print(line)
-    tk = toolkit.load(path, cfg, (clock.ENTRY,))
+    tk = toolkit.load(path, cfg)
     print(f'toolkit:  {config.toolkit_path(path)}')
     counts = tk.counts()
     print('checks:')

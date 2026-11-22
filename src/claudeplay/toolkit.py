@@ -68,9 +68,9 @@ class Toolkit:
     instructions: str = ''
     servers: dict[str, ServerToolkit] = field(default_factory=dict)
 
-    def entries(self, built_in: Sequence[Entry] = ()) -> tuple[Entry, ...]:
-        ''' every listed tool: the built-in ones first, then each server's in file order '''
-        return (*built_in, *(e for s in self.servers.values() for e in s.entries))
+    def entries(self) -> tuple[Entry, ...]:
+        ''' every listed tool, each server's in file order '''
+        return tuple(e for s in self.servers.values() for e in s.entries)
 
     def passthrough(self) -> tuple[str, ...]:
         ''' the servers whose unlisted tools are exposed too '''
@@ -122,7 +122,7 @@ class _ToolkitModel(config.Model):
     servers: dict[str, _ServerModel] = {}
 
 
-def parse(text: str, cfg: config.GatewayConfig, built_in: Sequence[Entry] = (), name: str = config.TOOLKIT_NAME) -> Toolkit:
+def parse(text: str, cfg: config.GatewayConfig, name: str = config.TOOLKIT_NAME) -> Toolkit:
     ''' parse toolkit.yaml text and check it against the config it goes with; errors name keys, never values '''
     raw = config.load_yaml(text, name, safe=True)
     if raw is None:
@@ -140,7 +140,7 @@ def parse(text: str, cfg: config.GatewayConfig, built_in: Sequence[Entry] = (), 
         raise config.ConfigError(f'{name}: servers.{unknown[0]}: not a server in config.yaml')
 
     servers: dict[str, ServerToolkit] = {}
-    owner = {e.name: 'the built-in tools' for e in built_in}
+    owner: dict[str, str] = {}
     for server_name, server in model.servers.items():
         entries = []
         for i, entry in enumerate(server.tools):
@@ -175,14 +175,14 @@ def parse(text: str, cfg: config.GatewayConfig, built_in: Sequence[Entry] = (), 
     return Toolkit(instructions=model.instructions, servers=servers)
 
 
-def load(config_path: Path | None, cfg: config.GatewayConfig, built_in: Sequence[Entry] = ()) -> Toolkit:
+def load(config_path: Path | None, cfg: config.GatewayConfig) -> Toolkit:
     ''' read the toolkit.yaml that sits next to the config file '''
     path = config.toolkit_path(config_path)
     try:
         text = path.read_text(encoding='utf-8')
     except FileNotFoundError:
         raise config.ConfigError(f'toolkit not found: {path}') from None
-    return parse(text, cfg, built_in, path.name)
+    return parse(text, cfg, path.name)
 
 
 def check_backend(server: str, tools: Sequence[Any], entries: Sequence[Entry], expose_all: bool = False, taken: Sequence[str] = ()) -> list[str]:

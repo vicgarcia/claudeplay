@@ -8,7 +8,7 @@ Claude on your phone -> claude.ai -> Cloudflare -> tunnel -> gateway on 127.0.0.
 
 The local tools are stdio MCP servers, which Claude's mobile app can't reach directly. The tray app runs them behind one HTTP endpoint and opens the tunnel without any inbound ports. Only your GitHub account can sign in.
 
-claudeplay holds no tools of its own except a clock. Everything else comes from two YAML files in `~/.claudeplay`:
+claudeplay holds no tools of its own. Everything comes from two YAML files in `~/.claudeplay`:
 
 - **`config.yaml`** says how the gateway runs, who may sign in, which tunnel to use, and how to start each of your MCP servers, with their secrets.
 - **`toolkit.yaml`** says which of each server's tools Claude sees. A tool passes through exactly as its server describes it, with its own name, description, arguments and server instructions. The file only picks which tools are exposed and adds to or replaces the text where the server's own doesn't fit your setup. Tools a server offers that you don't expose are hidden and can't be called, even by name.
@@ -17,13 +17,7 @@ The laptop has to be on, awake and online, though a locked screen should be fine
 
 ## What Claude sees
 
-One built-in tool, always present, which follows the laptop's clock and time zone (which may differ from where you are):
-
-| Tool | What it does |
-|---|---|
-| `get_current_timestamp` | The current date and time in every common form: `YYYY-MM-DD`, 24-hour and 12-hour time, day of the week, a spoken-style date, ISO 8601 local and UTC, unix seconds, ISO week, time zone name and UTC offset |
-
-Everything else is whatever `toolkit.yaml` exposes from your servers, and only while a server is enabled and running. [toolkit.example.yaml](toolkit.example.yaml) shows the author's setup: an Obsidian vault (every tool exposed), Pinboard bookmarks, and files and a shell on the laptop, which are renamed and described by hand. [Toolkit](docs/toolkit.md) explains how to write your own.
+Whatever `toolkit.yaml` exposes from your servers, and only while a server is enabled and running. [toolkit.example.yaml](toolkit.example.yaml) shows the author's setup: an Obsidian vault (every tool exposed), Pinboard bookmarks, and files and a shell on the laptop, which are renamed and described by hand. [Toolkit](docs/toolkit.md) explains how to write your own.
 
 ## Documentation
 

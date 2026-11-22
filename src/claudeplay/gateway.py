@@ -16,7 +16,7 @@ from fastmcp.client.transports import StdioTransport
 from fastmcp.server import create_proxy
 from fastmcp.server.middleware import Middleware, MiddlewareContext
 
-from . import clock, config, toolkit
+from . import config, toolkit
 
 log = logging.getLogger('claudeplay.gateway')
 
@@ -177,14 +177,14 @@ def build(
 ) -> tuple[FastMCP, StatusBoard]:
     ''' build the gateway; a server that cannot be set up is marked failed and the rest still serve
 
-    by default only the tools listed in the toolkit are visible (with none given, just the built-in clock);
+    by default only the tools listed in the toolkit are visible (with none given, nothing);
     raw=True exposes every backend tool as <server>_<tool>
     '''
     board = board or StatusBoard(None, cfg.endpoint_url)
     tk = tk or toolkit.Toolkit()
     proxies: dict[str, FastMCP] = {}
     backend_instructions: dict[str, str] = {}
-    taken = tuple(e.name for e in tk.entries((clock.ENTRY,)))
+    taken = tuple(e.name for e in tk.entries())
 
     def learned(name: str, text: str) -> None:
         backend_instructions[name] = text
@@ -210,8 +210,7 @@ def build(
         middleware=[*extra_middleware, ToolLogMiddleware()],
     )
     if not raw:
-        gw.add_transform(toolkit.Catalog(tk.entries((clock.ENTRY,)), tk.passthrough()))
-        gw.add_provider(clock.server(), namespace=clock.NAME)
+        gw.add_transform(toolkit.Catalog(tk.entries(), tk.passthrough()))
 
     for server in cfg.servers:
         if not server.enabled:

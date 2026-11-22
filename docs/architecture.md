@@ -26,7 +26,6 @@ Because the tray runs inside a Windows job object, killing or crashing it also t
 | `config.py` | Paths, parses and validates `config.yaml` (pydantic, unknown keys are errors), edits it in place (ruamel.yaml), masks secrets for display |
 | `gateway.py` | Builds the FastMCP server, mounts the backends, checks their health, logs tool calls |
 | `toolkit.py` | Loads and validates `toolkit.yaml`, checks it against what a server really lists, and the transform that presents the tools |
-| `clock.py` | The one built-in tool, `get_current_timestamp` |
 | `auth.py` | The OAuth proxy, allow-list and encrypted token store |
 | `supervisor.py` | Starts, stops and watches the gateway and tunnel |
 | `tray.py` | Icon and menu |

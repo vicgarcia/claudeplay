@@ -1,6 +1,6 @@
 # Toolkit
 
-Claude doesn't see your servers directly. It sees one server called `claudeplay` with the tools `toolkit.yaml` exposes, plus the built-in `get_current_timestamp`. That file, in the same folder as `config.yaml`, is the only thing that decides what Claude can call. [toolkit.example.yaml](../toolkit.example.yaml) is a complete, commented example, and `claudeplay check` validates your file.
+Claude doesn't see your servers directly. It sees one server called `claudeplay` with the tools `toolkit.yaml` exposes. That file, in the same folder as `config.yaml`, is the only thing that decides what Claude can call. [toolkit.example.yaml](../toolkit.example.yaml) is a complete, commented example, and `claudeplay check` validates your file.
 
 ## Passthrough by default
 
@@ -54,7 +54,7 @@ Claude receives the top level, then each enabled server's, in the order of `conf
 
 ## Checks at startup
 
-Both files are validated, and an unknown key or a wrong type is an error that names the file and the key, never the value. A server named in `toolkit.yaml` must be in `config.yaml`, and two tools can't share a name or use the built-in's.
+Both files are validated, and an unknown key or a wrong type is an error that names the file and the key, never the value. A server named in `toolkit.yaml` must be in `config.yaml`, and two tools can't share a name.
 
 When the gateway starts a server it also compares what you listed with what the server actually offers. A listed tool the server lacks, an argument named in `args`, `hide`, `fixed` or `defaults` that the tool doesn't take, or an unlisted tool whose name another tool already uses, marks that server `failed`, with the tool or argument named. This catches a renamed tool in an upgraded server, which would otherwise just vanish from Claude's list.
 

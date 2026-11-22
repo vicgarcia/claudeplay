@@ -38,7 +38,7 @@ your MCP servers (from config.yaml)          --+
 
 ## What Claude can do
 
-Whatever your `toolkit.yaml` exposes from your servers, plus `get_current_timestamp`, which is built in. The shipped [toolkit.example.yaml](../toolkit.example.yaml) shows one setup: an Obsidian vault, Pinboard and the laptop itself. [Toolkit](toolkit.md) explains how to write your own.
+Whatever your `toolkit.yaml` exposes from your servers. claudeplay has no tools of its own. The shipped [toolkit.example.yaml](../toolkit.example.yaml) shows one setup: an Obsidian vault, Pinboard and the laptop itself. [Toolkit](toolkit.md) explains how to write your own.
 
 ## Limits
 

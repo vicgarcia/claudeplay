@@ -11,7 +11,6 @@ src/claudeplay/
   config.py      config.yaml: pydantic validation (unknown keys are errors), in-place edits (ruamel.yaml round trip), masked describe, optional ${ENV_VAR}, paths (home_dir, logs_dir)
   gateway.py     fastmcp gateway: one create_proxy provider per server, probe + toolkit check, status board, tool-call logging
   toolkit.py     toolkit.yaml: loader and validation, Entry, Catalog transform (passthrough by default), instructions assembly
-  clock.py       the one built-in tool, get_current_timestamp, and its Entry
   auth.py        OAuthProxy fronting github, AllowListVerifier, encrypted token store
   supervisor.py  runs the gateway and the cloudflared tunnel as child processes; state from status.json
   tray.py        pystray menu and icon
@@ -34,7 +33,7 @@ Commit messages are single-line lowercase.
 
 ## The toolkit
 
-Claude sees only what `toolkit.yaml` exposes (plus the built-in clock). A listed tool passes through as its backend defines it: name, description, argument docs, annotations, and the backend's own server instructions (read in the probe and set on the gateway after it, since they're unknown when it is built). `toolkit.yaml` changes only what it sets: `name`, `description`, `description_append`, `args`, `hide`, `fixed`, `defaults`, annotations, `instructions`, `instructions_append`, and `expose_all` for a server whose tools should all be exposed unchanged. To add a tool, list it; put real logic in the backend repo, not here, and don't rename tools of a backend whose own text names them. `claudeplay serve --raw` exposes every backend tool for debugging.
+Claude sees only what `toolkit.yaml` exposes; claudeplay has no tools of its own. A listed tool passes through as its backend defines it: name, description, argument docs, annotations, and the backend's own server instructions (read in the probe and set on the gateway after it, since they're unknown when it is built). `toolkit.yaml` changes only what it sets: `name`, `description`, `description_append`, `args`, `hide`, `fixed`, `defaults`, annotations, `instructions`, `instructions_append`, and `expose_all` for a server whose tools should all be exposed unchanged. To add a tool, list it; put real logic in the backend repo, not here, and don't rename tools of a backend whose own text names them. `claudeplay serve --raw` exposes every backend tool for debugging.
 
 Both files are strict: unknown keys fail, and errors name the file and key path, never a value. The probe marks a server `failed` when `toolkit.yaml` names a tool or argument it doesn't have.
 

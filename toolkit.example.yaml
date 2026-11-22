@@ -40,7 +40,6 @@
 # sent once when claude connects: ideas that span servers. each enabled server adds its own after it.
 instructions: |
   claudeplay is a personal productivity toolkit over the user's own data.
-  get_current_timestamp gives the current date and time; use it rather than your own sense of the date.
 
 servers:
   # your notes. obsidian-mcp's own tools and instructions are passed through as they are

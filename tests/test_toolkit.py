@@ -9,7 +9,7 @@ import pytest
 from fastmcp import Client, FastMCP
 from mcp.types import ToolAnnotations
 
-from claudeplay import clock, config, gateway, toolkit
+from claudeplay import config, gateway, toolkit
 
 from fake_obsidian import FAKE_INSTRUCTIONS
 
@@ -21,8 +21,6 @@ EXAMPLE = HERE.parent / 'toolkit.example.yaml'
 OBSIDIAN_TOOLS = ['get_todays_date', 'list_journal_entries_by_year_and_month', 'read_journal_entry', 'append_to_journal_entry',
                   'prepend_to_journal_entry', 'add_note_to_journal_entry', 'write_journal_entry', 'list_projects', 'list_project_content',
                   'create_project', 'list_wiki', 'read_file', 'write_file', 'start_daily_notes_session']
-# the tools built into the gateway, there with no backends at all
-BUILT_IN = ['get_current_timestamp']
 
 EXPOSE_ALL = '''
 servers:
@@ -47,11 +45,11 @@ def example_cfg() -> config.GatewayConfig:
 
 
 def from_text(text: str, cfg: config.GatewayConfig) -> toolkit.Toolkit:
-    return toolkit.parse(text, cfg, (clock.ENTRY,))
+    return toolkit.parse(text, cfg)
 
 
 def example_toolkit(cfg: config.GatewayConfig) -> toolkit.Toolkit:
-    return toolkit.parse(EXAMPLE.read_text(encoding='utf-8'), cfg, (clock.ENTRY,), EXAMPLE.name)
+    return toolkit.parse(EXAMPLE.read_text(encoding='utf-8'), cfg, EXAMPLE.name)
 
 
 async def session(cfg, steps, tk):
@@ -86,9 +84,9 @@ def backend_tools(cfg) -> dict:
 
 # passthrough: the default is exactly what the backend says
 
-def test_expose_all_shows_every_backend_tool_under_its_own_name_after_the_built_in_one():
+def test_expose_all_shows_every_backend_tool_under_its_own_name():
     names = list(run(obsidian_cfg(), listed))
-    assert names == BUILT_IN + OBSIDIAN_TOOLS
+    assert names == OBSIDIAN_TOOLS
 
 
 def test_unlisted_tools_pass_through_with_the_backends_own_text_and_no_annotations_of_ours():
@@ -114,8 +112,8 @@ servers:
 '''
     tools = run(obsidian_cfg(), listed, text)
     names = list(tools)
-    assert names[:4] == ['get_current_timestamp', 'read_file', 'write_file', 'read_journal_entry']
-    assert names[4:] == [n for n in OBSIDIAN_TOOLS if n not in ('read_file', 'write_file', 'read_journal_entry')]
+    assert names[:3] == ['read_file', 'write_file', 'read_journal_entry']
+    assert names[3:] == [n for n in OBSIDIAN_TOOLS if n not in ('read_file', 'write_file', 'read_journal_entry')]
     raw = backend_tools(obsidian_cfg())
     assert tools['read_file'].annotations.read_only_hint is True and tools['read_file'].annotations.destructive_hint is None
     assert tools['read_file'].description == raw['obsidian_read_file'].description
@@ -141,7 +139,7 @@ def test_without_expose_all_only_the_listed_tools_exist_and_the_rest_cannot_be_c
                 await client.call_tool(hidden, {})
         return names
 
-    assert run(obsidian_cfg(), steps, text) == BUILT_IN + ['read_file']
+    assert run(obsidian_cfg(), steps, text) == ['read_file']
 
 
 def test_a_listed_tool_can_be_renamed_and_is_then_not_also_exposed_under_its_old_name():
@@ -209,19 +207,6 @@ def test_the_vaults_own_file_tools_work_with_listed_paths_and_claudeplay_adds_no
     assert note == {'content': 'more shelves'}
 
 
-def test_clock_tool_works_with_no_backends_and_is_the_only_tool():
-    async def steps(client):
-        names = [t.name for t in await client.list_tools()]
-        stamp = payload(await client.call_tool('get_current_timestamp', {}))
-        return names, stamp
-
-    names, stamp = run(config.GatewayConfig(servers=()), steps, toolkit.Toolkit())
-    assert names == BUILT_IN
-    assert set(stamp) == {'iso', 'utc', 'unix', 'date', 'time', 'time_12h', 'day_of_week', 'human_date', 'human',
-                          'iso_week', 'timezone', 'utc_offset'}
-    assert stamp['iso'].startswith(f"{stamp['date']}T{stamp['time']}")
-
-
 def test_server_presents_itself_as_claudeplay():
     async def steps(client):
         return client.initialize_result
@@ -230,7 +215,7 @@ def test_server_presents_itself_as_claudeplay():
 
 
 def test_a_disabled_backend_simply_removes_its_tools():
-    assert list(run(obsidian_cfg(enabled=False), listed)) == BUILT_IN
+    assert list(run(obsidian_cfg(enabled=False), listed)) == []
 
 
 def test_catalog_rejects_duplicate_names():
@@ -334,13 +319,13 @@ def test_a_session_that_starts_before_the_probes_finish_still_gets_the_toolkits_
 def test_the_shipped_example_is_valid_against_the_example_config():
     example = HERE.parent / 'config.example.yaml'
     cfg = config.parse(example.read_text(encoding='utf-8'), example.name)
-    tk = toolkit.parse(EXAMPLE.read_text(encoding='utf-8'), cfg, (clock.ENTRY,), EXAMPLE.name)
+    tk = toolkit.parse(EXAMPLE.read_text(encoding='utf-8'), cfg, EXAMPLE.name)
     assert tk.counts() == {'obsidian': 9, 'pinboard': 3, 'windows': 2}
     assert tk.passthrough() == ('obsidian',)
 
 
 def test_example_names_are_valid_for_claude():
-    for entry in example_toolkit(example_cfg()).entries((clock.ENTRY,)):
+    for entry in example_toolkit(example_cfg()).entries():
         assert len(entry.name) <= 64 and entry.name.replace('_', '').isalnum()
 
 
@@ -352,7 +337,6 @@ def test_example_exposes_no_tool_that_deletes():
 def test_example_instructions_are_additions_not_a_rewrite_of_what_backends_say():
     tk = example_toolkit(example_cfg())
     assert tk.servers['obsidian'].instructions is None and tk.servers['pinboard'].instructions is None
-    assert 'get_current_timestamp' in tk.instructions
     assert 'web_fetch' not in tk.instructions
 
 
@@ -394,26 +378,26 @@ CFG_AB = config.GatewayConfig(servers=(server('a'), server('b')))
 ])
 def test_bad_toolkit_errors_name_the_file_and_key_path(text, where):
     with pytest.raises(config.ConfigError) as e:
-        toolkit.parse(text, CFG_AB, (clock.ENTRY,), 'toolkit.yaml')
+        toolkit.parse(text, CFG_AB, 'toolkit.yaml')
     assert f'toolkit.yaml: {where}' in str(e.value)
 
 
 def test_toolkit_errors_never_quote_values():
     text = 'servers:\n  a:\n    tools:\n      - source: s\n        read_only: hunter2\n        extra_hunter2: hunter2\n'
     with pytest.raises(config.ConfigError) as e:
-        toolkit.parse(text, CFG_AB, (), 'toolkit.yaml')
+        toolkit.parse(text, CFG_AB, 'toolkit.yaml')
     assert 'hunter2' not in str(e.value).replace('extra_hunter2', '')
     with pytest.raises(config.ConfigError) as e:
-        toolkit.parse('a: hunter2\na: other-hunter2\n', CFG_AB, (), 'toolkit.yaml')
+        toolkit.parse('a: hunter2\na: other-hunter2\n', CFG_AB, 'toolkit.yaml')
     assert 'hunter2' not in str(e.value)
     with pytest.raises(config.ConfigError) as e:
-        toolkit.parse('servers: [unclosed hunter2\n', CFG_AB, (), 'toolkit.yaml')
+        toolkit.parse('servers: [unclosed hunter2\n', CFG_AB, 'toolkit.yaml')
     assert 'hunter2' not in str(e.value) and 'line' in str(e.value)
 
 
 def test_a_toolkit_server_missing_from_the_config_is_an_error():
     with pytest.raises(config.ConfigError, match='servers.c: not a server in config.yaml'):
-        toolkit.parse('servers:\n  c: {}\n', CFG_AB, (), 'toolkit.yaml')
+        toolkit.parse('servers:\n  c: {}\n', CFG_AB, 'toolkit.yaml')
 
 
 def test_duplicate_public_names_across_servers_are_an_error():
@@ -425,12 +409,6 @@ def test_duplicate_public_names_across_servers_are_an_error():
 def test_the_default_name_is_the_backend_name_so_two_servers_can_clash_on_it():
     text = 'servers:\n  a:\n    tools:\n      - {source: read}\n  b:\n    tools:\n      - {source: read}\n'
     with pytest.raises(config.ConfigError, match='the name read is already used'):
-        from_text(text, CFG_AB)
-
-
-def test_a_name_clashing_with_the_built_in_tool_is_an_error():
-    text = 'servers:\n  a:\n    tools:\n      - {source: now, name: get_current_timestamp}\n'
-    with pytest.raises(config.ConfigError, match='already used by the built-in tools'):
         from_text(text, CFG_AB)
 
 
@@ -447,9 +425,9 @@ def test_a_configured_server_with_nothing_exposed_is_allowed_with_a_warning(capl
     assert 'server b has no tools listed' in caplog.text and 'server a ' not in caplog.text
 
 
-def test_an_empty_toolkit_is_valid_and_exposes_only_the_built_in_tool():
+def test_an_empty_toolkit_is_valid_and_exposes_nothing():
     tk = from_text('', CFG_AB)
-    assert tk.servers == {} and tk.entries((clock.ENTRY,)) == (clock.ENTRY,)
+    assert tk.servers == {} and tk.entries() == ()
 
 
 def test_load_reads_toolkit_yaml_next_to_the_config_and_names_a_missing_file(tmp_path):
@@ -525,7 +503,7 @@ def test_a_renamed_backend_tool_marks_the_server_failed_naming_the_tool():
     assert board.servers['obsidian'].state == gateway.FAILED
     assert board.servers['obsidian'].error == 'toolkit.yaml: journal_read_v2: backend tool read_journal_entry_v2 not found'
     # the tools that do match are still presented, and the probe saw the backend's tools
-    assert names == ['get_current_timestamp', 'journal_read'] and board.servers['obsidian'].tools > 0
+    assert names == ['journal_read'] and board.servers['obsidian'].tools > 0
 
 
 def test_an_unknown_argument_marks_the_server_failed_naming_the_tool_and_argument():
@@ -665,4 +643,3 @@ def test_presenting_ignores_arguments_the_backend_does_not_have():
 def test_raw_mode_ignores_the_toolkit_and_shows_every_backend_tool_prefixed():
     names = set(backend_tools(obsidian_cfg()))
     assert {'obsidian_read_file', 'obsidian_start_daily_notes_session'} <= names
-    assert 'get_current_timestamp' not in names
