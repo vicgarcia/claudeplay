@@ -20,7 +20,10 @@ from . import config, toolkit
 
 log = logging.getLogger('claudeplay.gateway')
 
-PROBE_TIMEOUT = 30.0
+# how long a backend gets to start and list its tools before it is marked failed. uvx backends
+# resolve their environment and import everything first, which has taken over 30s; a dead one
+# still fails, just later
+PROBE_TIMEOUT = 120.0
 
 # states a single server can be in
 DISABLED = 'disabled'

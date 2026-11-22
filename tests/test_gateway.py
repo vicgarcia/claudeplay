@@ -20,7 +20,7 @@ async def run_gateway(cfg, environ=None, calls=()):
     gw, board = gateway.build(cfg, board=board, environ=environ, raw=True)
     async with Client(gw, mode='legacy') as client:
         names = sorted(t.name for t in await client.list_tools())
-        for _ in range(100):
+        for _ in range(300):
             if not any(s.state == gateway.STARTING for s in board.servers.values()):
                 break
             await asyncio.sleep(0.1)
@@ -85,6 +85,23 @@ def test_server_that_exits_immediately_is_marked_failed_by_probe():
     assert board.servers['dies'].state == gateway.FAILED
     assert board.servers['good'].state == gateway.OK
     assert overall == 'degraded'
+
+
+def test_slow_backend_is_failed_only_after_the_probe_timeout(monkeypatch):
+    slow = fake('slow', env={'FAKE_STARTUP_DELAY': '3'})
+    # the default limit lets a slow start come up
+    _, board, _, _ = run(cfg_of(slow))
+    assert board.servers['slow'].state == gateway.OK
+    # a backend still silent at the limit is failed, not waited on forever
+    monkeypatch.setattr(gateway, 'PROBE_TIMEOUT', 1.0)
+    _, board, _, _ = run(cfg_of(slow))
+    assert board.servers['slow'].state == gateway.FAILED
+    assert board.servers['slow'].error == 'failed to start (TimeoutError)'
+
+
+def test_probe_timeout_allows_slow_uvx_starts():
+    # uvx backends have taken over 30s to start, so the limit must leave plenty of room
+    assert gateway.PROBE_TIMEOUT >= 120
 
 
 def test_status_file_written_and_has_no_secrets(isolated_home):

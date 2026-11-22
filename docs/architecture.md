@@ -60,7 +60,7 @@ gw.add_provider(proxy, namespace=server.name)
 
 ### Health checks
 
-On startup, the gateway connects to each backend and lists its tools, with a 30-second limit. Zero tools counts as a failure, because the proxy swallows backend errors and returns an empty list.
+On startup, the gateway connects to each backend and lists its tools, with a 120-second limit (`PROBE_TIMEOUT`), long enough for a `uvx` server that resolves its environment and imports a lot before it answers. A server that hasn't listed its tools by then is marked failed with `TimeoutError`. Zero tools counts as a failure, because the proxy swallows backend errors and returns an empty list.
 
 The same probe checks `toolkit.yaml` against the backend: a listed tool the backend lacks, an argument that tool doesn't take, or an unlisted tool exposed under a name already in use marks the server failed, naming the tool or argument. It also reads the backend's own server instructions.
 

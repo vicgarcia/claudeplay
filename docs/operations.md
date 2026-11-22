@@ -93,7 +93,7 @@ Work from the laptop outward:
 
 Run `claudeplay check`, then look in `logs\claudeplay.log`. The error shows only the exception type, because messages can contain command lines.
 
-- **TimeoutError:** the server took more than 30 seconds to start, usually while `uvx` downloads packages on its first run. **Restart** should fix it.
+- **TimeoutError:** the server took more than 120 seconds to start, usually while `uvx` downloads packages on its first run. Until then it shows as `starting`. **Restart** should fix it.
 - **Exposed no tools:** it started and then failed. Run its command by hand to see the error. For pinboard, this usually means a bad token.
 - **`toolkit.yaml: ...` naming a tool or argument:** the server started, but `toolkit.yaml` lists a tool it doesn't have, an argument a tool doesn't take, or an unlisted tool under a name already used. It usually means the server was upgraded and renamed something. Fix the name in `toolkit.yaml` and restart.
 
