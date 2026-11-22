@@ -6,7 +6,7 @@ FAKE_INSTRUCTIONS = 'fake obsidian instructions: call get_todays_date, then add_
 mcp = FastMCP('fake-obsidian', instructions=FAKE_INSTRUCTIONS)
 journal: dict[str, str] = {'2026-10-01': 'went for a run'}
 files: dict[str, str] = {
-    'projects/garage/plan.md': 'shelves',
+    'projects/garage/shelves.md': 'shelves',
     'wiki/docker networking.md': 'bridges',
     'journal/2026/10/2026-10-01.md': 'went for a run',
     'projects/loose.md': 'not in a project',

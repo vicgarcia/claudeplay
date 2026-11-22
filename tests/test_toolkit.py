@@ -15,7 +15,6 @@ from fake_obsidian import FAKE_INSTRUCTIONS
 
 HERE = Path(__file__).parent
 FAKE_OBSIDIAN = str(HERE / 'fake_obsidian.py')
-FAKE_TODO = str(HERE / 'fake_todo.py')
 EXAMPLE = HERE.parent / 'toolkit.example.yaml'
 
 # everything the fake obsidian has, under its own names, in backend order
@@ -40,15 +39,10 @@ def obsidian_cfg(enabled: bool = True) -> config.GatewayConfig:
     return config.GatewayConfig(servers=(server('obsidian', FAKE_OBSIDIAN, enabled),))
 
 
-def todo_cfg() -> config.GatewayConfig:
-    return config.GatewayConfig(servers=(server('todo', FAKE_TODO),))
-
-
-def example_cfg(obsidian: bool = True, todo: bool = False) -> config.GatewayConfig:
-    ''' the servers the example toolkit names: obsidian and todo over fakes, the others never started '''
+def example_cfg() -> config.GatewayConfig:
+    ''' the servers the example toolkit names: obsidian over its fake, the others never started '''
     return config.GatewayConfig(servers=(
-        server('obsidian', FAKE_OBSIDIAN, obsidian), server('todo', FAKE_TODO, todo),
-        server('pinboard', enabled=False), server('windows', enabled=False),
+        server('obsidian', FAKE_OBSIDIAN), server('pinboard', enabled=False), server('windows', enabled=False),
     ))
 
 
@@ -210,9 +204,9 @@ def test_the_vaults_own_file_tools_work_with_listed_paths_and_claudeplay_adds_no
         await client.call_tool('write_file', {'file_path': project[0]['path'], 'content': 'more shelves'})
         return article, payload(await client.call_tool('read_file', {'file_path': project[0]['path']}))
 
-    article, plan = run(obsidian_cfg(), steps)
+    article, note = run(obsidian_cfg(), steps)
     assert article == {'content': 'bridges'}
-    assert plan == {'content': 'more shelves'}
+    assert note == {'content': 'more shelves'}
 
 
 def test_clock_tool_works_with_no_backends_and_is_the_only_tool():
@@ -335,95 +329,13 @@ def test_a_session_that_starts_before_the_probes_finish_still_gets_the_toolkits_
     assert (run(obsidian_cfg(), steps, TOP + EXPOSE_ALL) or '').startswith('top level')
 
 
-# a toolkit.yaml written for tasks: the main lists are written once and shared through an anchor
-
-TODO_TOOLKIT = '''
-servers:
-  todo:
-    instructions_append: the main lists are Chores and Health.
-    tools:
-      - source: get_lists
-        read_only: true
-        description_append: 'Commonly used lists and their ids: Chores = id-chores; Health = id-health.'
-      - source: get_tasks_due_today
-        read_only: true
-        fixed: {list_ids: &main [id-chores, id-health]}
-      - source: get_tasks_by_completed_date_range
-        read_only: true
-        args: {list_ids: 'the list ids to check; the main lists if left out'}
-        defaults: {list_ids: *main}
-      - source: get_steps
-        read_only: true
-'''
-
-
-def test_common_list_ids_are_published_in_the_description_after_the_backends():
-    cfg = todo_cfg()
-    tools = run(cfg, listed, TODO_TOOLKIT)
-    raw = backend_tools(cfg)
-    assert tools['get_lists'].description == f"{raw['todo_get_lists'].description or ''}\n\nCommonly used lists and their ids: Chores = id-chores; Health = id-health.".strip()
-
-
-def test_tasks_due_today_always_uses_the_listed_lists():
-    async def steps(client):
-        tool = (await listed(client))['get_tasks_due_today']
-        ok = payload(await client.call_tool('get_tasks_due_today', {}))
-        bad = await client.call_tool('get_tasks_due_today', {'list_ids': ['id-other']}, raise_on_error=False)
-        return tool, ok, bad
-
-    tool, ok, bad = run(todo_cfg(), steps, TODO_TOOLKIT)
-    assert ok['list_ids'] == ['id-chores', 'id-health']
-    assert not tool.input_schema.get('properties')
-    assert bad.is_error
-
-
-def test_completed_search_defaults_to_the_main_lists_and_takes_others():
-    async def steps(client):
-        tool = (await listed(client))['get_tasks_by_completed_date_range']
-        main = payload(await client.call_tool('get_tasks_by_completed_date_range', {'start_date': '2026-11-01'}))
-        other = payload(await client.call_tool('get_tasks_by_completed_date_range', {'start_date': '2026-11-01', 'list_ids': ['id-grocery']}))
-        return tool, main, other
-
-    tool, main, other = run(todo_cfg(), steps, TODO_TOOLKIT)
-    assert main['list_ids'] == ['id-chores', 'id-health']
-    assert other['list_ids'] == ['id-grocery']
-    assert tool.input_schema['required'] == ['start_date']
-    assert tool.input_schema['properties']['list_ids']['description'] == 'the list ids to check; the main lists if left out'
-
-
-def test_a_default_without_an_argument_description_still_reaches_the_schema():
-    text = 'servers:\n  todo:\n    tools:\n      - {source: get_tasks_by_completed_date_range, defaults: {list_ids: [id-1]}}\n'
-
-    async def steps(client):
-        tool = (await listed(client))['get_tasks_by_completed_date_range']
-        return tool, payload(await client.call_tool('get_tasks_by_completed_date_range', {'start_date': '2026-11-01'}))
-
-    tool, called = run(todo_cfg(), steps, text)
-    assert tool.input_schema['properties']['list_ids']['default'] == ['id-1']
-    assert called['list_ids'] == ['id-1']
-
-
-def test_without_defaults_the_completed_search_needs_list_ids():
-    text = 'servers:\n  todo:\n    tools:\n      - {source: get_tasks_by_completed_date_range}\n'
-    tool = run(todo_cfg(), listed, text)['get_tasks_by_completed_date_range']
-    assert set(tool.input_schema['required']) == {'list_ids', 'start_date'}
-
-
-def test_steps_route_to_todo():
-    async def steps(client):
-        return payload(await client.call_tool('get_steps', {'task_id': 'task-1', 'list_id': 'id-chores'}))
-
-    result = run(todo_cfg(), steps, TODO_TOOLKIT)
-    assert result['task_id'] == 'task-1' and result['steps'][0]['name'] == 'buy primer'
-
-
 # the shipped example
 
 def test_the_shipped_example_is_valid_against_the_example_config():
     example = HERE.parent / 'config.example.yaml'
     cfg = config.parse(example.read_text(encoding='utf-8'), example.name)
     tk = toolkit.parse(EXAMPLE.read_text(encoding='utf-8'), cfg, (clock.ENTRY,), EXAMPLE.name)
-    assert tk.counts() == {'obsidian': 9, 'todo': 11, 'pinboard': 3, 'windows': 2}
+    assert tk.counts() == {'obsidian': 9, 'pinboard': 3, 'windows': 2}
     assert tk.passthrough() == ('obsidian',)
 
 
@@ -437,22 +349,16 @@ def test_example_exposes_no_tool_that_deletes():
     assert all('delete' not in e.source for s in tk.servers.values() for e in s.entries)
 
 
-def test_example_main_lists_are_written_once_and_shared_by_due_today_and_completed():
-    entries = {e.name: e for e in example_toolkit(example_cfg()).servers['todo'].entries}
-    assert entries['get_tasks_due_today'].fixed['list_ids'] == entries['get_tasks_by_completed_date_range'].defaults['list_ids']
-    assert entries['get_tasks_due_today'].fixed['list_ids']
-
-
 def test_example_instructions_are_additions_not_a_rewrite_of_what_backends_say():
     tk = example_toolkit(example_cfg())
-    assert tk.servers['obsidian'].instructions is None and tk.servers['todo'].instructions is None
+    assert tk.servers['obsidian'].instructions is None and tk.servers['pinboard'].instructions is None
     assert 'get_current_timestamp' in tk.instructions
     assert 'web_fetch' not in tk.instructions
 
 
-def test_the_shipped_example_matches_the_fake_backends_it_overlaps():
-    ''' every entry the fakes can answer for names real tools and arguments '''
-    cfg = example_cfg(obsidian=True, todo=True)
+def test_the_shipped_example_matches_the_fake_obsidian():
+    ''' every obsidian entry names real tools and arguments '''
+    cfg = example_cfg()
 
     async def go():
         board = gateway.StatusBoard(None, cfg.endpoint_url)
@@ -468,8 +374,6 @@ def test_the_shipped_example_matches_the_fake_backends_it_overlaps():
     board = asyncio.run(go())
     # the fake obsidian has every tool the example lists for obsidian, with the arguments it names
     assert board.servers['obsidian'].state == gateway.OK, board.servers['obsidian'].error
-    # the fake todo has only some, so the only problem is missing tools, never wrong arguments
-    assert board.servers['todo'].state == gateway.FAILED and 'not found' in board.servers['todo'].error
 
 
 # validation: the config is the catalog, so mistakes must fail loudly
@@ -670,6 +574,49 @@ def test_a_changed_default_is_visible_sent_and_can_be_overridden():
     assert tool.input_schema['properties']['limit']['default'] == 50
     assert default.content[0].text == '50'
     assert chosen.content[0].text == '7'
+
+
+def test_a_default_without_an_argument_description_still_reaches_the_schema():
+    backend = FastMCP('backend')
+
+    @backend.tool
+    def search(start: str, list_ids: list[str]) -> list[str]:
+        return list_ids
+
+    entry = toolkit.Entry(name='search', source='search', defaults={'list_ids': ['id-1']})
+    backend.add_transform(toolkit.Catalog((entry,)))
+
+    async def steps():
+        async with Client(backend) as client:
+            return (await client.list_tools())[0], await client.call_tool('search', {'start': 'x'})
+
+    tool, called = asyncio.run(steps())
+    assert tool.input_schema['properties']['list_ids']['default'] == ['id-1']
+    assert tool.input_schema['required'] == ['start']
+    assert called.structured_content == {'result': ['id-1']}
+
+
+def test_fixed_arguments_are_invisible_always_sent_and_cannot_be_overridden():
+    backend = FastMCP('backend')
+
+    @backend.tool
+    def due(list_ids: list[str]) -> list[str]:
+        return list_ids
+
+    entry = toolkit.Entry(name='due', source='due', fixed={'list_ids': ['id-a', 'id-b']})
+    backend.add_transform(toolkit.Catalog((entry,)))
+
+    async def steps():
+        async with Client(backend) as client:
+            tool = (await client.list_tools())[0]
+            ok = await client.call_tool('due', {})
+            bad = await client.call_tool('due', {'list_ids': ['id-other']}, raise_on_error=False)
+            return tool, ok, bad
+
+    tool, ok, bad = asyncio.run(steps())
+    assert not tool.input_schema.get('properties')
+    assert ok.structured_content == {'result': ['id-a', 'id-b']}
+    assert bad.is_error
 
 
 def test_hidden_arguments_are_invisible_and_cannot_be_overridden():

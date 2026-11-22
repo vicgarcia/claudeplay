@@ -1,8 +1,8 @@
 # claudeplay
 
-Windows tray app exposing local stdio MCP servers as one claude.ai connector. [docs/](docs/README.md) describes how it works now; update it when behaviour changes, and keep real hostnames and ids out of it. Settled decisions (one gateway and endpoint, GitHub OAuth via FastMCP's proxy with a numeric-id allow-list, Cloudflare Tunnel on the user's own domain, runs at logon, uv tool, pystray, two YAML files in `~/.claudeplay` with logs in `%LOCALAPPDATA%\claudeplay\logs`, backend text passed through by default, todo-mcp untouched) are not up for re-litigation.
+Windows tray app exposing local stdio MCP servers as one claude.ai connector. [docs/](docs/README.md) describes how it works now; update it when behaviour changes, and keep real hostnames and ids out of it. Settled decisions (one gateway and endpoint, GitHub OAuth via FastMCP's proxy with a numeric-id allow-list, Cloudflare Tunnel on the user's own domain, runs at logon, uv tool, pystray, two YAML files in `~/.claudeplay` with logs in `%LOCALAPPDATA%\claudeplay\logs`, backend text passed through by default) are not up for re-litigation.
 
-Two goals pull in the same direction: a claudeplay that anyone can run over their own MCP servers, and the author's own config and install. So the code holds no knowledge of any particular server: anything about obsidian, todo, pinboard or windows lives in `toolkit.yaml` or in the backend's repo.
+Two goals pull in the same direction: a claudeplay that anyone can run over their own MCP servers, and the author's own config and install. So the code holds no knowledge of any particular server: anything about obsidian, pinboard or windows lives in `toolkit.yaml` or in the backend's repo.
 
 ## Structure
 

@@ -23,7 +23,7 @@ One built-in tool, always present, which follows the laptop's clock and time zon
 |---|---|
 | `get_current_timestamp` | The current date and time in every common form: `YYYY-MM-DD`, 24-hour and 12-hour time, day of the week, a spoken-style date, ISO 8601 local and UTC, unix seconds, ISO week, time zone name and UTC offset |
 
-Everything else is whatever `toolkit.yaml` exposes from your servers, and only while a server is enabled and running. [toolkit.example.yaml](toolkit.example.yaml) shows the author's setup: an Obsidian vault (every tool exposed), Microsoft To Do tasks, Pinboard bookmarks, and files and a shell on the laptop, which are renamed and described by hand. [Toolkit](docs/toolkit.md) explains how to write your own.
+Everything else is whatever `toolkit.yaml` exposes from your servers, and only while a server is enabled and running. [toolkit.example.yaml](toolkit.example.yaml) shows the author's setup: an Obsidian vault (every tool exposed), Pinboard bookmarks, and files and a shell on the laptop, which are renamed and described by hand. [Toolkit](docs/toolkit.md) explains how to write your own.
 
 ## Documentation
 

@@ -1,6 +1,6 @@
 # claudeplay toolkit: copy to ~/.claudeplay/toolkit.yaml (the folder of config.yaml) and edit.
 # it says which of each server's tools claude sees, and what to change about them. it holds no secrets,
-# but ids such as task list ids are specific to your account, so the copy stays out of the repo.
+# but what it says is specific to your setup, so the copy stays out of the repo.
 #
 # by default a tool is passed through exactly as its backend describes it: the same name, description,
 # argument descriptions and annotations, and the backend's own server instructions. this file only picks
@@ -61,39 +61,6 @@ servers:
       - {source: read_file, read_only: true}
       - {source: write_journal_entry, destructive: true}
       - {source: write_file, destructive: true}
-
-  # microsoft to do. the list ids are specific to your account: get them from get_lists, and replace the
-  # placeholders below. only the tools listed are exposed, so nothing that deletes is
-  todo:
-    instructions_append: |
-      the user's main lists are Tasks and Chores. get_lists already gives the ids of the commonly used lists in its description, so calling it is only needed for other lists.
-    tools:
-      - source: get_lists
-        read_only: true
-        description_append: >-
-          Commonly used lists and their ids: Tasks = <Tasks id>; Chores = <Chores id>; Grocery = <Grocery id>.
-          The user has other lists too, which only this tool can find.
-      - source: get_tasks
-        read_only: true
-      - source: get_tasks_due_today
-        read_only: true
-        description_append: Checks only the user's main lists, Tasks and Chores.
-        fixed: {list_ids: &main [<Tasks id>, <Chores id>]}
-      - source: get_tasks_by_completed_date_range
-        read_only: true
-        description_append: Checks the user's main lists unless given list_ids.
-        args: {list_ids: 'the list ids to check, from get_lists; the main lists if left out'}
-        defaults: {list_ids: *main}
-      - source: create_task
-      - source: update_task
-        destructive: true
-      - source: complete_task
-      - source: get_steps
-        read_only: true
-      - source: create_step
-      - source: update_step
-        destructive: true
-      - source: complete_step
 
   # bookmarks
   pinboard:

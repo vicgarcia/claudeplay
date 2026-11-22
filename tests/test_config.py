@@ -20,11 +20,11 @@ servers:
     args: [--vault, '${VAULT}']
     env:
       TZ: America/New_York
-  todo:
-    command: todo-mcp.exe
+  pinboard:
+    command: pinboard-mcp.exe
     enabled: false
     env:
-      TODO_CLIENT_SECRET: ${TODO_CLIENT_SECRET}
+      PINBOARD_TOKEN: ${PINBOARD_TOKEN}
 '''
 
 
@@ -32,9 +32,9 @@ def test_parse_basic():
     cfg = config.parse(SAMPLE)
     assert cfg.port == 9000
     assert cfg.host == '127.0.0.1'
-    assert [s.name for s in cfg.servers] == ['obsidian', 'todo']
+    assert [s.name for s in cfg.servers] == ['obsidian', 'pinboard']
     assert cfg.server('obsidian').env == {'TZ': 'America/New_York'}
-    assert cfg.server('todo').enabled is False
+    assert cfg.server('pinboard').enabled is False
     assert cfg.auth.allowed_user_ids == (12345,)
 
 
@@ -64,8 +64,8 @@ def test_resolve_expands_command_args_and_env():
 
 
 def test_resolve_fails_on_unset_variable_in_env():
-    with pytest.raises(config.ConfigError, match='TODO_CLIENT_SECRET'):
-        config.resolve(config.parse(SAMPLE).server('todo'), {})
+    with pytest.raises(config.ConfigError, match='PINBOARD_TOKEN'):
+        config.resolve(config.parse(SAMPLE).server('pinboard'), {})
 
 
 @pytest.mark.parametrize('text', [
@@ -137,12 +137,12 @@ servers:
     command: o.exe
     args: [--vault, 'C:/some path/vault']
     enabled: true
-  todo:
-    command: 'todo.exe'
+  pinboard:
+    command: 'pinboard.exe'
     enabled: false  # off for now
     env:
-      TODO_CLIENT_SECRET: todo-secret
-      TODO_ID: &id 'x'  # anchored
+      PINBOARD_TOKEN: pinboard-secret
+      PINBOARD_USER: &id 'x'  # anchored
 
 tunnel:
   name: claudeplay
@@ -174,11 +174,11 @@ def test_home_defaults_to_dot_claudeplay_and_logs_to_local_app_data(monkeypatch,
 
 def test_set_enabled_changes_only_that_value_byte_for_byte(tmp_path):
     path = write(tmp_path)
-    config.set_enabled(path, 'todo', True)
-    assert config.load(path).server('todo').enabled is True
+    config.set_enabled(path, 'pinboard', True)
+    assert config.load(path).server('pinboard').enabled is True
     assert path.read_text() == EDITABLE.replace('enabled: false  # off for now', 'enabled: true  # off for now')
     # and back again
-    config.set_enabled(path, 'todo', False)
+    config.set_enabled(path, 'pinboard', False)
     assert path.read_text() == EDITABLE
 
 
@@ -189,14 +189,14 @@ def test_set_enabled_unknown_server(tmp_path):
 
 def test_set_enabled_keeps_crlf_files_crlf(tmp_path):
     path = write(tmp_path, EDITABLE.replace('\n', '\r\n'))
-    config.set_enabled(path, 'todo', True)
+    config.set_enabled(path, 'pinboard', True)
     raw = path.read_bytes()
     assert b'\r\n' in raw and b'\n' not in raw.replace(b'\r\n', b'')
 
 
 def test_set_enabled_leaves_no_temp_file_behind(tmp_path):
     path = write(tmp_path)
-    config.set_enabled(path, 'todo', True)
+    config.set_enabled(path, 'pinboard', True)
     assert sorted(p.name for p in tmp_path.iterdir()) == ['config.yaml']
 
 
@@ -224,13 +224,13 @@ def test_describe_masks_every_secret(tmp_path):
     config.ensure_signing_key(path)
     cfg = config.load(path)
     text = '\n'.join(config.describe(cfg))
-    for secret in ('top-secret', 'todo-secret', cfg.auth.jwt_signing_key):
+    for secret in ('top-secret', 'pinboard-secret', cfg.auth.jwt_signing_key):
         assert secret not in text
-    assert 'abc' in text and '[42]' in text and 'TODO_CLIENT_SECRET=' in text and 'todo: disabled' in text
+    assert 'abc' in text and '[42]' in text and 'PINBOARD_TOKEN=' in text and 'pinboard: disabled' in text
 
 
 def test_the_tasks_and_browser_sections_are_gone_so_they_are_errors():
-    for text in ('tasks:\n  due_today: [Chores]\n', 'browser:\n  channel: chrome\n'):
+    for text in ('tasks:\n  due_today: [x]\n', 'browser:\n  channel: chrome\n'):
         with pytest.raises(config.ConfigError, match='Extra inputs are not permitted'):
             config.parse(text)
 
@@ -270,5 +270,5 @@ def test_tunnel_credentials_can_be_set_and_the_id_falls_back_to_the_file_content
 def test_the_shipped_example_config_parses():
     example = Path(__file__).parent.parent / 'config.example.yaml'
     cfg = config.parse(example.read_text(encoding='utf-8'), example.name)
-    assert [s.name for s in cfg.servers] == ['obsidian', 'todo', 'pinboard', 'windows']
+    assert [s.name for s in cfg.servers] == ['obsidian', 'pinboard', 'windows']
     assert cfg.auth is not None and cfg.tunnel is None

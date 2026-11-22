@@ -48,7 +48,7 @@ class StubSupervisor:
 @pytest.fixture
 def app(tmp_path):
     path = tmp_path / 'config.yaml'
-    path.write_text("servers:\n  obsidian:\n    command: o.exe\n  todo:\n    command: t.exe\n    enabled: false\n")
+    path.write_text("servers:\n  obsidian:\n    command: o.exe\n  pinboard:\n    command: p.exe\n    enabled: false\n")
     sup = StubSupervisor()
     sup.cfg = None
     return tray.TrayApp(sup, config.load(path), path)
@@ -102,10 +102,10 @@ def test_start_and_stop_are_mutually_visible(app):
 
 
 def test_toggle_server_persists_and_restarts_only_when_running(app):
-    assert app.server_enabled('obsidian') and not app.server_enabled('todo')
-    app.toggle_server('todo')
-    assert app.server_enabled('todo')
-    assert config.load(app.config_path).server('todo').enabled is True
+    assert app.server_enabled('obsidian') and not app.server_enabled('pinboard')
+    app.toggle_server('pinboard')
+    assert app.server_enabled('pinboard')
+    assert config.load(app.config_path).server('pinboard').enabled is True
     assert app.sup.cfg is app.cfg
     assert app.sup.calls == []
 
@@ -113,7 +113,7 @@ def test_toggle_server_persists_and_restarts_only_when_running(app):
     app.toggle_server('obsidian')
     assert not app.server_enabled('obsidian')
     saved = config.load(app.config_path)
-    assert saved.server('todo').enabled is True and saved.server('obsidian').enabled is False
+    assert saved.server('pinboard').enabled is True and saved.server('obsidian').enabled is False
     assert app.sup.calls == ['start', 'restart']
 
 

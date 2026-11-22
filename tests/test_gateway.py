@@ -48,10 +48,10 @@ def test_two_servers_do_not_collide():
 
 
 def test_disabled_servers_are_skipped_and_not_expanded():
-    todo = config.ServerConfig(name='todo', command='${NOT_SET_ANYWHERE}', enabled=False)
-    names, board, _, overall = run(cfg_of(fake('a'), todo))
+    pinboard = config.ServerConfig(name='pinboard', command='${NOT_SET_ANYWHERE}', enabled=False)
+    names, board, _, overall = run(cfg_of(fake('a'), pinboard))
     assert names == ['a_echo', 'a_ping']
-    assert board.servers['todo'].state == gateway.DISABLED
+    assert board.servers['pinboard'].state == gateway.DISABLED
 
 
 def test_override_enables_and_disables():

@@ -24,7 +24,6 @@ Then install whichever MCP servers you want to use, in whatever way they're dist
 
 ```powershell
 uv tool install git+https://github.com/vicgarcia/obsidian-mcp
-uv tool install git+https://github.com/vicgarcia/todo-mcp
 uv tool install git+https://github.com/vicgarcia/pinboard-mcp
 ```
 
@@ -128,8 +127,6 @@ For the servers in the example files:
 | obsidian | `--vault` path in `args`. "Today" follows the laptop's time zone. Set `TZ` only to override that |
 | pinboard | `PINBOARD_TOKEN`, from pinboard.in → Settings → Password, as `username:TOKEN`. It checks the token at startup and exits if it's wrong |
 | windows | the path to `uvx.exe`. Keep `ANONYMIZED_TELEMETRY: 'false'`, because telemetry is on otherwise |
-| todo | `TODO_CLIENT_ID`, `TODO_CLIENT_SECRET`, and `TODO_REFRESH_TOKEN` from `todo-mcp --auth --client-id ... --client-secret ...`. The list ids in `toolkit.yaml` come from its `get_lists` tool |
-
 Each server's `env` values go only to that server's process, and nothing secret appears on a command line.
 
 > **Before enabling windows:** it gives whoever signs in a shell and full file access on the laptop. Read [Security](security.md) first.

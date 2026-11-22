@@ -44,15 +44,6 @@ servers:
     # "today" follows the laptop's time zone; set TZ here only to override it
     # env: {TZ: America/New_York}
 
-  todo:
-    command: C:/Users/<you>/.local/bin/todo-mcp.exe
-    enabled: false
-    env:
-      # azure app id and secret; refresh token from `todo-mcp --auth --client-id ... --client-secret ...`
-      TODO_CLIENT_ID: ''
-      TODO_CLIENT_SECRET: ''
-      TODO_REFRESH_TOKEN: ''
-
   pinboard:
     command: C:/Users/<you>/.local/bin/pinboard-mcp.exe
     # pinboard-mcp checks its token at startup and exits if it is wrong
