@@ -17,7 +17,7 @@ Do the steps in order, because the hostname you pick in step 3 is used in steps 
 Install claudeplay as a uv tool, from GitHub. Its repo is private, so it installs over SSH:
 
 ```powershell
-uv tool install git+ssh://git@github.com/vicgarcia/claudeplay
+uv tool install git+https://github.com/vicgarcia/claudeplay
 ```
 
 Then install whichever MCP servers you want to use, in whatever way they're distributed. The author's, for example:

@@ -34,12 +34,10 @@ Everything else is whatever `toolkit.yaml` exposes from your servers, and only w
 - [Architecture](docs/architecture.md): how the parts work
 - [Security](docs/security.md): what protects your data, the accepted risks, and how to shut it off
 
-[plan.md](plan.md) records the project's decisions and history.
-
 ## Quick reference
 
 ```powershell
-uv tool install git+ssh://git@github.com/vicgarcia/claudeplay   # install
+uv tool install git+https://github.com/vicgarcia/claudeplay   # install
 uv tool upgrade claudeplay                # update to the latest main
 claudeplay check                          # validate both files; config shown with secrets masked
 claudeplay status                         # show what's running
