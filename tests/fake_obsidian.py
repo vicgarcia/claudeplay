@@ -51,7 +51,7 @@ def prepend_to_journal_entry(text: str, date: str | None = None) -> dict:
 def add_note_to_journal_entry(text: str, date: str | None = None) -> dict:
     day = date or TODAY
     created = day not in journal
-    journal[day] = (journal.get(day) or '\n\n# Daily Notes\n') + f'{text}\n{TODAY} 09:00\n\n'
+    journal[day] = journal.get(day, '') + f'{text}\n\n{TODAY} 09:00\n\n\n'
     return {'success': True, 'path': f'journal/{day}.md', 'created': created, 'timestamp': f'{TODAY} 09:00'}
 
 

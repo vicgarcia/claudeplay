@@ -188,7 +188,7 @@ def test_calls_route_to_the_backend_under_its_own_names():
     async def steps(client):
         month = payload(await client.call_tool('list_journal_entries_by_year_and_month', {'year': '2026', 'month': '10'}))
         noted = payload(await client.call_tool('add_note_to_journal_entry', {'text': '### heron\nby the river'}))
-        prepended = payload(await client.call_tool('prepend_to_journal_entry', {'text': '# Daily Recap\nquiet\n'}))
+        prepended = payload(await client.call_tool('prepend_to_journal_entry', {'text': '# Daily Recap\nquiet\n\n'}))
         appended = payload(await client.call_tool('append_to_journal_entry', {'text': 'ps'}))
         today = payload(await client.call_tool('read_journal_entry', {'date': '2026-10-29'}))
         date = payload(await client.call_tool('get_todays_date', {}))
@@ -198,7 +198,7 @@ def test_calls_route_to_the_backend_under_its_own_names():
     assert [e['name'] for e in month] == ['2026-10-01.md']
     assert noted['created'] is True and noted['timestamp'] == '2026-10-29 09:00'
     assert prepended['created'] is False and appended['created'] is False
-    assert today['content'] == '# Daily Recap\nquiet\n\n\n# Daily Notes\n### heron\nby the river\n2026-10-29 09:00\n\nps'
+    assert today['content'] == '# Daily Recap\nquiet\n\n### heron\nby the river\n\n2026-10-29 09:00\n\n\nps'
     assert date == {'date': '2026-10-29'}
 
 
