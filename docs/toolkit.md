@@ -46,11 +46,12 @@ Each server's own instructions, which it sends when a client connects, are read 
 
 | Setting | What it does |
 |---|---|
+| `label` | Says what the server is, in the heading above its instructions |
 | `instructions_append` | Added after the server's instructions |
 | `instructions` | Replaces the server's instructions; an empty string sends none |
 | top-level `instructions` | Sent first, for ideas that span servers |
 
-Claude receives the top level, then each enabled server's, in the order of `config.yaml`. A disabled server, or one that exposes nothing, adds nothing. Keep these about how to use the tools, not how Claude should sound.
+Claude receives the top level, then each enabled server's, in the order of `config.yaml`. Each server's part starts with a heading naming it, `## notes: the user's notes vault` with a `label` or `## notes` without, so Claude can tell which part is about which server. The tools themselves don't say which server they come from, so the top level can use these names to tie the user's words to a server. A disabled server, or one that exposes nothing or has no instructions, adds nothing. Keep these about how to use the tools, not how Claude should sound.
 
 ## Checks at startup
 
