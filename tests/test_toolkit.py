@@ -274,15 +274,29 @@ TOP = 'instructions: top level\n'
 
 def test_the_backends_own_instructions_are_passed_through_after_the_top_level():
     text = TOP + EXPOSE_ALL
-    assert instructions_of(obsidian_cfg(), text) == f'top level\n\n{FAKE_INSTRUCTIONS}'
+    assert instructions_of(obsidian_cfg(), text) == f'top level\n\n## obsidian\n\n{FAKE_INSTRUCTIONS}'
 
 
 def test_instructions_append_follows_the_backends_and_instructions_replaces_them():
     base = TOP + 'servers:\n  obsidian:\n    expose_all: true\n'
-    assert instructions_of(obsidian_cfg(), base + '    instructions_append: also this\n') == f'top level\n\n{FAKE_INSTRUCTIONS}\n\nalso this'
-    assert instructions_of(obsidian_cfg(), base + '    instructions: mine\n    instructions_append: also this\n') == 'top level\n\nmine\n\nalso this'
-    # an empty replacement sends none of the backend's
+    assert instructions_of(obsidian_cfg(), base + '    instructions_append: also this\n') == f'top level\n\n## obsidian\n\n{FAKE_INSTRUCTIONS}\n\nalso this'
+    assert instructions_of(obsidian_cfg(), base + '    instructions: mine\n    instructions_append: also this\n') == 'top level\n\n## obsidian\n\nmine\n\nalso this'
+    # an empty replacement sends none of the backend's, and with no text there is no heading either
     assert instructions_of(obsidian_cfg(), base + "    instructions: ''\n") == 'top level'
+
+
+def test_a_label_says_what_the_server_is_in_its_heading():
+    cfg = config.GatewayConfig(servers=(server('a'), server('b')))
+    text = ('servers:\n  a:\n    label: the user\'s notes\n    instructions: from a\n    tools:\n      - {source: s}\n'
+            '  b:\n    label: "  spread\n      over lines  "\n    instructions: from b\n    tools:\n      - {source: t}\n')
+    assert from_text(text, cfg).instructions_for(cfg) == "## a: the user's notes\n\nfrom a\n\n## b: spread over lines\n\nfrom b"
+
+
+def test_a_labelled_server_with_no_instructions_adds_no_heading():
+    cfg = config.GatewayConfig(servers=(server('a'),))
+    tk = from_text("servers:\n  a:\n    label: notes\n    expose_all: true\n", cfg)
+    assert tk.instructions_for(cfg) == ''
+    assert tk.instructions_for(cfg, {'a': 'from the backend'}) == '## a: notes\n\nfrom the backend'
 
 
 def test_a_server_that_exposes_nothing_or_is_disabled_adds_no_instructions():
@@ -295,16 +309,16 @@ def test_instructions_follow_config_order_not_file_order():
     text = TOP + 'servers:\n  a:\n    instructions: from a\n    tools:\n      - {source: s}\n  b:\n    instructions: from b\n    tools:\n      - {source: t}\n'
     cfg = config.GatewayConfig(servers=(server('b'), server('a')))
     tk = from_text(text, cfg)
-    assert tk.instructions_for(cfg) == 'top level\n\nfrom b\n\nfrom a'
+    assert tk.instructions_for(cfg) == 'top level\n\n## b\n\nfrom b\n\n## a\n\nfrom a'
     off = config.GatewayConfig(servers=(server('b', enabled=False), server('a')))
-    assert from_text(text, off).instructions_for(off) == 'top level\n\nfrom a'
+    assert from_text(text, off).instructions_for(off) == 'top level\n\n## a\n\nfrom a'
 
 
 def test_instructions_for_uses_the_backends_text_only_for_servers_that_have_some():
     cfg = config.GatewayConfig(servers=(server('a'), server('b')))
     tk = from_text('servers:\n  a:\n    expose_all: true\n  b:\n    expose_all: true\n    instructions_append: extra\n', cfg)
-    assert tk.instructions_for(cfg, {'a': 'from the backend'}) == 'from the backend\n\nextra'
-    assert tk.instructions_for(cfg) == 'extra'
+    assert tk.instructions_for(cfg, {'a': 'from the backend'}) == '## a\n\nfrom the backend\n\n## b\n\nextra'
+    assert tk.instructions_for(cfg) == '## b\n\nextra'
 
 
 def test_a_session_that_starts_before_the_probes_finish_still_gets_the_toolkits_own_instructions():

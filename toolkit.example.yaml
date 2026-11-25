@@ -13,6 +13,8 @@
 #   expose_all           true to expose every tool the backend has, unchanged, under its own name; the
 #                        tools listed below are then changes to some of them. new backend tools appear
 #                        on their own, so use it for backends you trust to add only safe tools
+#   label                what the server is, shown after its name in the heading above its instructions,
+#                        e.g. "## obsidian: the user's notes vault"
 #   instructions         replaces the backend's own server instructions ('' sends none)
 #   instructions_append  added after the backend's instructions (or the replacement)
 #   tools                the tools to expose, in the order claude sees them
@@ -44,6 +46,7 @@ instructions: |
 servers:
   # your notes. obsidian-mcp's own tools and instructions are passed through as they are
   obsidian:
+    label: the user's notes vault (journal, projects, wiki)
     expose_all: true
     instructions_append: |
       projects are folders of notes for ongoing work. list_project_content gives the paths that read_file and write_file take.

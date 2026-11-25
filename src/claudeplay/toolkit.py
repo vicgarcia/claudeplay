@@ -54,6 +54,8 @@ class Entry:
 @dataclass(frozen=True)
 class ServerToolkit:
     ''' what one server contributes: its tools, and instructions sent only while it is enabled '''
+    # what the server is, after its name in the heading above its instructions
+    label: str = ''
     # replaces the instructions the backend sends ('' sends none); None passes the backend's own through
     instructions: str | None = None
     instructions_append: str = ''
@@ -80,17 +82,21 @@ class Toolkit:
         ''' the top-level instructions, then each enabled server's in config order
 
         a server's own are the backend's instructions (read when it was probed) unless toolkit.yaml replaces them,
-        then its instructions_append. a server that exposes nothing adds nothing
+        then its instructions_append, under a heading naming the server and its label, so claude can tell which
+        server each part is about. a server that exposes nothing, or has no text, adds nothing
         '''
         backend = backend or {}
-        parts = [self.instructions]
+        parts = [self.instructions.strip()]
         for server in cfg.servers:
             section = self.servers.get(server.name)
             if not server.enabled or section is None or not (section.entries or section.expose_all):
                 continue
             own = backend.get(server.name, '') if section.instructions is None else section.instructions
-            parts += [own, section.instructions_append]
-        return '\n\n'.join(p.strip() for p in parts if p.strip())
+            text = '\n\n'.join(p.strip() for p in (own, section.instructions_append) if p.strip())
+            if text:
+                heading = f'## {server.name}: {section.label}' if section.label else f'## {server.name}'
+                parts.append(f'{heading}\n\n{text}')
+        return '\n\n'.join(p for p in parts if p)
 
     def counts(self) -> dict[str, int]:
         return {name: len(s.entries) for name, s in self.servers.items()}
@@ -111,6 +117,7 @@ class _EntryModel(config.Model):
 
 
 class _ServerModel(config.Model):
+    label: str = ''
     instructions: str | None = None
     instructions_append: str = ''
     expose_all: bool = False
@@ -162,6 +169,7 @@ def parse(text: str, cfg: config.GatewayConfig, name: str = config.TOOLKIT_NAME)
                 open_world=entry.open_world,
             ))
         servers[server_name] = ServerToolkit(
+            label=' '.join(server.label.split()),
             instructions=server.instructions,
             instructions_append=server.instructions_append,
             expose_all=server.expose_all,
