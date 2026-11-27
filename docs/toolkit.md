@@ -23,6 +23,8 @@ Change as little as you need. Everything below is optional, per tool or per serv
 | `tools` | A list of the tools to expose, in the order Claude sees them. Each has a `source`, the server's own tool name |
 | `expose_all: true` | Exposes every tool the server has, unchanged and under its own name, after the ones you list. Any tools you list are then changes to some of them. New tools in a server appear on their own, so use this for servers you trust to add only safe tools |
 
+Claude sees the tools grouped by server, in the order the servers appear in `toolkit.yaml`, so put the server you use most first. Within a server, the tools you list come first, in file order, and then its `expose_all` tools in the server's own order.
+
 A server named in `config.yaml` with nothing listed and no `expose_all` exposes nothing, and a warning says so. A tool the server has but you don't expose, including its prompts and resources, is hidden and can't be called even by name.
 
 ## Changing a tool
