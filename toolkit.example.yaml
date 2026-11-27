@@ -48,10 +48,6 @@ servers:
   obsidian:
     label: the user's notes vault (journal, projects, wiki)
     expose_all: true
-    instructions_append: |
-      projects are folders of notes for ongoing work. list_project_content gives the paths that read_file and write_file take.
-      the wiki is a set of standalone articles. list_wiki gives the paths that read_file takes.
-      when the user asks for something to be documented, add it to the journal and to a project file, reading an existing file first.
     # expose_all passes the tools through; these say which of them only read or overwrite, since the backend doesn't
     tools:
       - {source: get_todays_date, read_only: true}
