@@ -249,6 +249,35 @@ def test_a_passthrough_tool_whose_name_is_already_used_is_hidden_with_a_warning(
     assert 'tool dup of an expose_all server is hidden' in caplog.text
 
 
+def test_tools_are_grouped_by_server_in_toolkit_order_with_each_servers_listed_tools_first():
+    # the backends list c's tools first, but toolkit.yaml names a, then b, then c
+    text = '''
+servers:
+  a:
+    expose_all: true
+    tools:
+      - {source: listed}
+  b:
+    tools:
+      - {source: two}
+      - {source: one, name: b_first}
+  c:
+    expose_all: true
+'''
+    cfg = config.GatewayConfig(servers=(server('c'), server('b'), server('a')))
+    tk = from_text(text, cfg)
+    backend = FastMCP('backend')
+    for name in ('c_only', 'a_early', 'a_listed', 'a_late', 'b_one', 'b_two'):
+        backend.tool(lambda: 'ok', name=name)
+    backend.add_transform(toolkit.Catalog(tk.entries(), tk.passthrough(), tuple(tk.servers)))
+
+    async def steps():
+        async with Client(backend) as client:
+            return [t.name for t in await client.list_tools()]
+
+    assert asyncio.run(steps()) == ['listed', 'early', 'late', 'two', 'b_first', 'only']
+
+
 # server instructions: the backend's own, loaded when it is probed, plus the toolkit's additions
 
 async def instructions_after_probe(cfg, tk) -> str | None:

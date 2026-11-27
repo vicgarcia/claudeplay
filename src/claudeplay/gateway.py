@@ -213,7 +213,7 @@ def build(
         middleware=[*extra_middleware, ToolLogMiddleware()],
     )
     if not raw:
-        gw.add_transform(toolkit.Catalog(tk.entries(), tk.passthrough()))
+        gw.add_transform(toolkit.Catalog(tk.entries(), tk.passthrough(), tuple(tk.servers)))
 
     for server in cfg.servers:
         if not server.enabled:

@@ -17,7 +17,8 @@
 #                        e.g. "## obsidian: the user's notes vault"
 #   instructions         replaces the backend's own server instructions ('' sends none)
 #   instructions_append  added after the backend's instructions (or the replacement)
-#   tools                the tools to expose, in the order claude sees them
+#   tools                the tools to expose, in the order claude sees them. claude sees each server's tools
+#                        together, servers in the order of this file
 #
 # per tool:
 #   source              the backend's own tool name (required)

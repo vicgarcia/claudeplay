@@ -49,6 +49,8 @@ class Entry:
     destructive: bool | None = None
     # true when the tool reaches beyond the user's own data
     open_world: bool | None = None
+    # the server it comes from, which places it in the listing
+    server: str = ''
 
 
 @dataclass(frozen=True)
@@ -66,7 +68,7 @@ class ServerToolkit:
 
 @dataclass(frozen=True)
 class Toolkit:
-    ''' the whole presented surface, in the order of toolkit.yaml '''
+    ''' the whole presented surface, in the order of toolkit.yaml: servers, then each server's tools '''
     instructions: str = ''
     servers: dict[str, ServerToolkit] = field(default_factory=dict)
 
@@ -167,6 +169,7 @@ def parse(text: str, cfg: config.GatewayConfig, name: str = config.TOOLKIT_NAME)
                 defaults=dict(entry.defaults),
                 destructive=entry.destructive,
                 open_world=entry.open_world,
+                server=server_name,
             ))
         servers[server_name] = ServerToolkit(
             label=' '.join(server.label.split()),
@@ -240,9 +243,13 @@ def _annotations(entry: Entry, backend: ToolAnnotations | None) -> ToolAnnotatio
 
 class Catalog(Transform):
     ''' exposes the listed tools, and every tool of an expose_all server, with the changes toolkit.yaml lists;
-    everything else, including prompts and resources, is hidden '''
+    everything else, including prompts and resources, is hidden
 
-    def __init__(self, entries: Sequence[Entry], passthrough: Sequence[str] = ()):
+    tools are grouped by server, in the order of servers (toolkit.yaml's); within a server the listed tools come
+    first in file order, then its expose_all tools in the backend's order
+    '''
+
+    def __init__(self, entries: Sequence[Entry], passthrough: Sequence[str] = (), servers: Sequence[str] = ()):
         names = [e.name for e in entries]
         if len(set(names)) != len(names):
             raise ValueError('duplicate tool names in catalog')
@@ -252,6 +259,11 @@ class Catalog(Transform):
             self._by_source.setdefault(entry.source, []).append(entry)
         self._by_name = {e.name: e for e in entries}
         self._passthrough = tuple(passthrough)
+        self._server_rank = {s: i for i, s in enumerate(servers)}
+
+    def _rank(self, server: str) -> int:
+        # a server not named in servers sorts after those that are
+        return self._server_rank.get(server, len(self._server_rank))
 
     def _present(self, tool: Tool, entry: Entry) -> Tool:
         # only describe arguments the backend actually has; the gateway reports the rest when it probes the server
@@ -279,15 +291,18 @@ class Catalog(Transform):
             return None
         for server in self._passthrough:
             if source.startswith(f'{server}_'):
-                return Entry(name=source.removeprefix(f'{server}_'), source=source)
+                return Entry(name=source.removeprefix(f'{server}_'), source=source, server=server)
         return None
 
     async def list_tools(self, tools: Sequence[Tool]) -> Sequence[Tool]:
-        presented = [self._present(t, e) for t in tools for e in self._by_source.get(t.name, ())]
-        order = {e.name: i for i, e in enumerate(self._by_name.values())}
-        presented.sort(key=lambda t: order[t.name])
-        taken = {t.name for t in presented}
-        for tool in tools:
+        # each tool is sorted by (its server's rank, listed before expose_all, its place in that group)
+        listed = {e.name: i for i, e in enumerate(self._by_name.values())}
+        ranked = [
+            ((self._rank(e.server), 0, listed[e.name]), self._present(t, e))
+            for t in tools for e in self._by_source.get(t.name, ())
+        ]
+        taken = {t.name for _, t in ranked}
+        for i, tool in enumerate(tools):
             entry = self._passthrough_entry(tool.name)
             if entry is None:
                 continue
@@ -295,8 +310,9 @@ class Catalog(Transform):
                 log.warning('tool %s of an expose_all server is hidden: its name is already used', entry.name)
                 continue
             taken.add(entry.name)
-            presented.append(self._present(tool, entry))
-        return presented
+            ranked.append(((self._rank(entry.server), 1, i), self._present(tool, entry)))
+        ranked.sort(key=lambda r: r[0])
+        return [t for _, t in ranked]
 
     async def get_tool(self, name: str, call_next: GetToolNext, *, version=None) -> Tool | None:
         entry = self._by_name.get(name)
